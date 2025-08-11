@@ -169,7 +169,7 @@ class TextToSpeechApp:
         threshold_container = ttk.Frame(settings_frame)
         threshold_container.pack(fill="x", pady=(5, 0))
         
-        self.threshold_var = tk.DoubleVar(value=0.04)  # Default threshold value
+        self.threshold_var = tk.DoubleVar(value=0.06)  # Default threshold value
         # Create a scale with 0.02 increments
         self.threshold_slider = ttk.Scale(threshold_container, from_=0, to=0.5, variable=self.threshold_var, orient="horizontal")
         self.threshold_slider.pack(side="left", fill="x", expand=True, padx=(0, 10))
@@ -186,7 +186,7 @@ class TextToSpeechApp:
         margin_frame = ttk.Frame(settings_frame)
         margin_frame.pack(fill="x", pady=(5, 0))
         
-        self.margin_var = tk.IntVar(value=50)  # Default margin value in ms
+        self.margin_var = tk.IntVar(value=25)  # Default margin value in ms
         self.margin_spinbox = ttk.Spinbox(margin_frame, from_=0, to=500, textvariable=self.margin_var, width=10)
         self.margin_spinbox.pack(side="left")
         ttk.Label(margin_frame, text="ms").pack(side="left", padx=(5, 0))
@@ -322,7 +322,7 @@ class TextToSpeechApp:
         if self.current_soundfile is not None:
             try:
                 self.current_soundfile.close()
-                print("SoundFile closed successfully")
+                print("Sound file closed successfully")
             except Exception as e:
                 print(f"Error closing SoundFile: {e}")
 
@@ -343,7 +343,10 @@ class TextToSpeechApp:
             except Exception as e:
                 print(f"Error creating lockfile: {e}")
         else:
-            os.remove(lockfile_path)
+            try:
+                os.remove(lockfile_path)
+            except OSError:
+                pass
                 
     def load_pipeline(self):
         """Load Kokoro pipeline in background"""
@@ -452,7 +455,7 @@ class TextToSpeechApp:
             voice = self.voice_var.get()
                         
             # Call generate_long with the required parameters
-            if os.path.exists(self.output_path_var.get()):
+            if self.sf_mode == 'r+':
                 self.current_soundfile = sf.SoundFile(output_path, self.sf_mode)
             else:
                 self.current_soundfile = sf.SoundFile(output_path, self.sf_mode, 24000, 1, 'PCM_16')
@@ -487,7 +490,6 @@ class TextToSpeechApp:
         except Exception as e:
             # Only create lockfile if we want to create one
             self.was_error_or_force_quit = True
-            self._wait_for_worker()
             self._cleanup_on_exit()
                                         
             # Update UI for error

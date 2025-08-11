@@ -47,13 +47,13 @@ def split_into_word_chunks(chunk, max_chars=200):
     return subchunks
 
 
-def split_long_sentence(sentence, max_chars=200):
+def split_long_sentence(sentence, max_chars=250):
     """Split a long sentence into smaller chunks without adding pauses between them"""
     if len(sentence) <= max_chars:
         return [sentence]
     
     # Split at natural breakpoints first (commas, semicolons, etc.)
-    breakpoints = [';', ':', '-', '–', '—']
+    breakpoints = [';', ':', '-', '–', '—', ',', ' and ', ' or ']
     
     # Start with the whole sentence as one chunk
     chunks = [sentence]
