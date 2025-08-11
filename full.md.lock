@@ -1,0 +1,6 @@
+{
+  "failed_chunk_index": 3756,
+  "failed_chunk_content": "$^5$",
+  "error_message": "Failed to process chunk after 10 retries: $^5$",
+  "timestamp": 1754785441.13797
+}

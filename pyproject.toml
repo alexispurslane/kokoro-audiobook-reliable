@@ -1,0 +1,21 @@
+[project]
+name = "whisperspeech-tts-gui"
+version = "0.1.0"
+description = "A GUI application for text-to-speech conversion using Kokoro"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "kokoro>=0.9.4",
+    "tk",
+    "nltk",
+    "torch",
+    "torchaudio",
+    "soundfile",
+    "pip>=25.2",
+]
+
+
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
