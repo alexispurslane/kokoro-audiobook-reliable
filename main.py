@@ -306,8 +306,8 @@ class TextToSpeechApp:
                     resume_info = json.load(lf)
                     self.voice_var.set(resume_info['voice'])
                     self.start_chunk_idx = resume_info.get('failed_chunk_index', 0) or 0
-            except:
-                pass  # If lockfile is corrupted, start from beginning
+            except (json.JSONDecodeError, FileNotFoundError) as e:
+                print(f"Warning: Error loading lockfile: {e}. Starting from beginning.")
 
         # Open SoundFile in append mode if resuming, otherwise write mode
         if self.start_chunk_idx > 0 and os.path.exists(self.output_path_var.get()):
@@ -555,7 +555,7 @@ class TextToSpeechApp:
         """Update UI when conversion finishes successfully"""
         self.conversion_in_progress = False
         # Calculate total time
-        if hasattr(self, 'start_time'):
+        if self.start_time is not None:
             total_time = time.time() - self.start_time
             total_mins, total_secs = divmod(int(total_time), 60)
             total_time_str = f"Total time: {total_mins:02d}:{total_secs:02d}"
@@ -629,7 +629,9 @@ class TextToSpeechApp:
                 self.text_widget.update()  # Update the GUI
                 # Also write to original stdout
                 self.original_stdout.write(text)
-            except:
+            except tk.TclError as e:
+                # This can happen if the widget is destroyed while writing
+                # print(f"Warning: Tkinter widget error during console redirect: {e}")
                 pass
             
         def flush(self):

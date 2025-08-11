@@ -12,6 +12,7 @@ dependencies = [
     "torchaudio",
     "soundfile",
     "pip>=25.2",
+    "numpy>=2.2.6",
 ]
 
 
