@@ -466,7 +466,12 @@ class TextToSpeechApp:
                 
             # Read text file
             with open(input_path, 'r', encoding='utf-8') as f:
-                text = f.read().strip()
+                text = f.read().strip() + f"""
+
+                We have now reached the end of your audiobook. This was read to you by Kokoro-82M using the {self.voice_var.get()} voice, through Alexis Dumas's TTS program designed for long texts and reliability.
+
+                Thank you!
+                """
                 
             if not text:
                 raise ValueError("Input file is empty")
