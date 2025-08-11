@@ -77,8 +77,22 @@ class TextToSpeechApp:
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         
+        # Create each section using dedicated functions
+        self.create_file_settings_section(main_container)
+        self.create_voice_settings_section(main_container)
+        self.create_audio_processing_settings_section(main_container)
+        self.create_progress_section(main_container)
+        self.create_control_buttons_section(main_container)
+        self.create_console_output_section(main_container)
+        
+        # Redirect STDOUT to the console text box
+        self.original_stdout = sys.stdout
+        sys.stdout = self.ConsoleRedirector(self.console_text, self.original_stdout)
+        
+    def create_file_settings_section(self, parent):
+        """Create the file settings section with input/output file selection"""
         # File selection section
-        file_frame = ttk.LabelFrame(main_container, text="File Settings", padding="10")
+        file_frame = ttk.LabelFrame(parent, text="File Settings", padding="10")
         file_frame.pack(fill="x", pady=(0, 10))
         
         # Input file section
@@ -115,8 +129,10 @@ class TextToSpeechApp:
         self.browse_output_btn = ttk.Button(output_row_frame, text="Browse", command=self.browse_output_file)
         self.browse_output_btn.pack(side="left")
         
+    def create_voice_settings_section(self, parent):
+        """Create the voice settings section with voice selection dropdown"""
         # Voice selection section
-        voice_frame = ttk.LabelFrame(main_container, text="Voice Settings", padding="10")
+        voice_frame = ttk.LabelFrame(parent, text="Voice Settings", padding="10")
         voice_frame.pack(fill="x", pady=(0, 10))
         
         ttk.Label(voice_frame, text="Voice:").pack(anchor="w")
@@ -159,8 +175,10 @@ class TextToSpeechApp:
         self.voice_dropdown.pack(pady=(5, 0))
         self.voice_dropdown.set("af_heart")  # Set default value
         
+    def create_audio_processing_settings_section(self, parent):
+        """Create the audio processing settings section with threshold slider and margin spinbox"""
         # Audio processing settings section
-        settings_frame = ttk.LabelFrame(main_container, text="Audio Processing Settings", padding="10")
+        settings_frame = ttk.LabelFrame(parent, text="Audio Processing Settings", padding="10")
         settings_frame.pack(fill="x", pady=(0, 10))
         
         # Leading silence threshold slider
@@ -191,8 +209,10 @@ class TextToSpeechApp:
         self.margin_spinbox.pack(side="left")
         ttk.Label(margin_frame, text="ms").pack(side="left", padx=(5, 0))
         
+    def create_progress_section(self, parent):
+        """Create the progress section with status label, timer, and progress bar"""
         # Progress section
-        progress_frame = ttk.LabelFrame(main_container, text="Progress", padding="10")
+        progress_frame = ttk.LabelFrame(parent, text="Progress", padding="10")
         progress_frame.pack(fill="x", pady=(0, 10))
         
         # Status label
@@ -210,8 +230,10 @@ class TextToSpeechApp:
         self.progress.pack(fill="x", pady=(10, 0))
         self.progress.pack_forget()  # Hide initially
         
+    def create_control_buttons_section(self, parent):
+        """Create the control buttons section with convert and stop buttons"""
         # Control buttons
-        button_frame = ttk.Frame(main_container)
+        button_frame = ttk.Frame(parent)
         button_frame.pack(fill="x", pady=(0, 10))
         
         # Center the buttons
@@ -226,8 +248,10 @@ class TextToSpeechApp:
         self.stop_btn = ttk.Button(button_container, text="Stop", command=self.stop_conversion, state="disabled")
         self.stop_btn.pack(side="left")
         
+    def create_console_output_section(self, parent):
+        """Create the console output section with text area and scrollbar"""
         # Console output section
-        console_frame = ttk.LabelFrame(main_container, text="Console Output", padding="10")
+        console_frame = ttk.LabelFrame(parent, text="Console Output", padding="10")
         console_frame.pack(fill="both", expand=True)
         
         console_text_container = ttk.Frame(console_frame)
@@ -239,10 +263,6 @@ class TextToSpeechApp:
         
         self.console_text.pack(side="left", fill="both", expand=True)
         console_scrollbar.pack(side="right", fill="y")
-        
-        # Redirect STDOUT to the console text box
-        self.original_stdout = sys.stdout
-        sys.stdout = self.ConsoleRedirector(self.console_text, self.original_stdout)
         
     def browse_input_file(self):
         """Open file dialog to select input text file"""
@@ -317,7 +337,7 @@ class TextToSpeechApp:
                 
     def _cleanup_on_exit(self):
         """Clean up resources on exit. NOTE: Runs on worker thread now!"""
-        
+        self.abort_conversion.clear()
         # Close any open SoundFile
         if self.current_soundfile is not None:
             try:
@@ -410,7 +430,7 @@ class TextToSpeechApp:
             self.was_error_or_force_quit = True
             self._wait_for_worker()
             self.root.after(0, self._abort_conversion_ui)
-                        
+                                    
     def stop_conversion(self):
         """Stop the current conversion process without creating a lockfile"""
         print("Stopping conversion process...")
@@ -526,7 +546,6 @@ class TextToSpeechApp:
     def _start_conversion_ui(self):
         """Update UI when conversion starts"""
         self.conversion_in_progress = True
-        self.abort_conversion.clear()
         self.was_error_or_force_quit = True  # Default to creating lockfile
         self._set_ui_state(enabled=False)
         self.status_var.set("Converting text to speech...")
@@ -559,7 +578,6 @@ class TextToSpeechApp:
     def _abort_conversion_ui(self):
         """Update UI when conversion is aborted"""
         self.conversion_in_progress = False
-        self.abort_conversion.clear()
         self._set_ui_state(enabled=True)
         self.status_var.set("Conversion paused")
         self.timer_var.set("")
@@ -568,7 +586,6 @@ class TextToSpeechApp:
     def _stop_conversion_ui(self):
         """Update UI when conversion is aborted"""
         self.conversion_in_progress = False
-        self.abort_conversion.clear()
         self._set_ui_state(enabled=True)
         self.status_var.set("Conversion ended")
         self.timer_var.set("")
