@@ -316,6 +316,27 @@ class TextToSpeechApp:
         self.sample_rate_spinbox.pack(side="left")
         ttk.Label(sample_rate_frame, text="Hz").pack(side="left", padx=(5, 0))
         
+        # MP3 conversion checkbox and bitrate
+        ttk.Label(voice_frame, text="MP3 Conversion:").pack(anchor="w", pady=(10, 0))
+        
+        mp3_frame = ttk.Frame(voice_frame)
+        mp3_frame.pack(fill="x", pady=(5, 0))
+        
+        self.convert_to_mp3_var = tk.BooleanVar(value=False)
+        self.mp3_checkbox = ttk.Checkbutton(mp3_frame, text="Convert to MP3", variable=self.convert_to_mp3_var)
+        self.mp3_checkbox.pack(side="left", padx=(0, 10))
+        
+        ttk.Label(mp3_frame, text="Bitrate:").pack(side="left", padx=(0, 5))
+        
+        self.mp3_bitrate_var = tk.StringVar(value="192k")
+        mp3_bitrates = ["64k", "96k", "128k", "192k", "256k", "320k"]
+        self.mp3_bitrate_combo = ttk.Combobox(mp3_frame, textvariable=self.mp3_bitrate_var, values=mp3_bitrates, state="readonly", width=8)
+        self.mp3_bitrate_combo.pack(side="left")
+        self.mp3_bitrate_combo.set("192k")  # Set default value
+        
+        # Add callback to update output file extension when MP3 checkbox is toggled
+        self.convert_to_mp3_var.trace_add('write', self._on_mp3_checkbox_changed)
+        
     def create_audio_processing_settings_section(self, parent):
         """Create the audio processing settings section with threshold slider and margin spinbox"""
         # Audio processing settings section
@@ -419,7 +440,8 @@ class TextToSpeechApp:
             # Auto-set output path if not already set
             if not self.output_path_var.get():
                 base_name = os.path.splitext(os.path.basename(file_path))[0]
-                output_path = os.path.join(os.path.dirname(file_path), f"{base_name}.wav")
+                extension = ".mp3" if self.convert_to_mp3_var.get() else ".wav"
+                output_path = os.path.join(os.path.dirname(file_path), f"{base_name}{extension}")
                 self.output_path_var.set(output_path)
 
             self._pull_resume_info()
@@ -427,10 +449,19 @@ class TextToSpeechApp:
     def browse_output_file(self):
         """Open file dialog to select output audio file"""
         print("Opening file dialog for output file...")
+        
+        # Determine default extension based on MP3 conversion setting
+        if self.convert_to_mp3_var.get():
+            default_ext = ".mp3"
+            filetypes = [("MP3 files", "*.mp3"), ("WAV files", "*.wav"), ("FLAC files", "*.flac"), ("All files", "*.*")]
+        else:
+            default_ext = ".wav"
+            filetypes = [("WAV files", "*.wav"), ("MP3 files", "*.mp3"), ("FLAC files", "*.flac"), ("All files", "*.*")]
+        
         file_path = filedialog.asksaveasfilename(
             title="Save Output Audio File",
-            defaultextension=".wav",
-            filetypes=[("WAV files", "*.wav"), ("MP3 files", "*.mp3"), ("FLAC files", "*.flac"), ("All files", "*.*")]
+            defaultextension=default_ext,
+            filetypes=filetypes
         )
         if file_path:
             print(f"Selected output file: {file_path}")
@@ -520,6 +551,8 @@ class TextToSpeechApp:
                     self.voice_var.set(resume_info['voice'])
                     self.speed_var.set(resume_info.get('speed', 1.0))
                     self.sample_rate_var.set(resume_info.get('sample_rate', 24000))
+                    self.convert_to_mp3_var.set(resume_info.get('convert_to_mp3', False))
+                    self.mp3_bitrate_var.set(resume_info.get('mp3_bitrate', '192k'))
                     self.start_chunk_idx = resume_info.get('failed_chunk_index', 0) or 0
             except (json.JSONDecodeError, FileNotFoundError) as e:
                 print(f"Warning: Error loading lockfile: {e}. Starting from beginning.")
@@ -533,7 +566,8 @@ class TextToSpeechApp:
             self.start_chunk_idx = 0 # Restart if file doesn't exist to build on
 
         if resume_info:
-            self.status_var.set(f"Resuming from chunk {self.start_chunk_idx + 1} with voice {self.voice_var.get()}, speed {self.speed_var.get()}x, sample rate {self.sample_rate_var.get()}Hz...")
+            mp3_info = f", MP3: {self.mp3_bitrate_var.get()}" if self.convert_to_mp3_var.get() else ""
+            self.status_var.set(f"Resuming from chunk {self.start_chunk_idx + 1} with voice {self.voice_var.get()}, speed {self.speed_var.get()}x, sample rate {self.sample_rate_var.get()}Hz{mp3_info}...")
             
         self.root.update()
 
@@ -569,6 +603,8 @@ class TextToSpeechApp:
                     'voice': self.voice_var.get(),
                     'speed': self.speed_var.get(),
                     'sample_rate': self.sample_rate_var.get(),
+                    'convert_to_mp3': self.convert_to_mp3_var.get(),
+                    'mp3_bitrate': self.mp3_bitrate_var.get(),
                     'timestamp': time.time()
                 }
                 with open(lockfile_path, 'w') as lf:
@@ -952,6 +988,17 @@ class TextToSpeechApp:
     def update_speed_display(self, value):
         """Update the speed value display"""
         self.speed_value_label.config(text=f"{float(value):.1f}x")
+    
+    def _on_mp3_checkbox_changed(self, *args):
+        """Handle MP3 checkbox state change to update output file extension"""
+        current_output = self.output_path_var.get()
+        if current_output:
+            base_name = os.path.splitext(current_output)[0]
+            if self.convert_to_mp3_var.get():
+                new_output = base_name + ".mp3"
+            else:
+                new_output = base_name + ".wav"
+            self.output_path_var.set(new_output)
 
 def main():
     root = tk.Tk()

@@ -5,6 +5,7 @@ import traceback
 import threading
 from tts_generator import generate_long
 import soundfile as sf
+from pydub import AudioSegment
 
 
 class ConvertWorker:
@@ -13,8 +14,30 @@ class ConvertWorker:
     def __init__(self, app_instance, ui_callbacks=None):
         self.app = app_instance
         self.ui_callbacks = ui_callbacks or {}
+    
+    def convert_to_mp3(self, wav_path, bitrate="192k"):
+        """Convert WAV file to MP3 with specified bitrate"""
+        try:
+            print(f"Converting {wav_path} to MP3 with bitrate {bitrate}...")
+            
+            # Load the WAV file
+            audio = AudioSegment.from_wav(wav_path)
+            
+            # Create MP3 filename
+            mp3_path = os.path.splitext(wav_path)[0] + ".mp3"
+            
+            # Export as MP3
+            audio.export(mp3_path, format="mp3", bitrate=bitrate)
+            
+            print(f"Successfully converted to MP3: {mp3_path}")
+            return mp3_path
+            
+        except Exception as e:
+            print(f"Error converting to MP3: {e}")
+            raise
         
     def convert_file(self, input_path, output_path):
+        output_path = os.path.splitext(output_path)[0]+'.wav' # in case the final destination file is mp3, we still wanna generate an intermediate wav 
         """Convert a single text file to speech"""
         try:
             print(f"Starting conversion worker for {input_path}")
@@ -84,9 +107,20 @@ class ConvertWorker:
                         progress_info['processed_chunks'] / progress_info['total_chunks']
                     )
             
+            # Check if MP3 conversion is requested
+            final_output_path = output_path
+            if self.app.convert_to_mp3_var.get():
+                try:
+                    mp3_bitrate = self.app.mp3_bitrate_var.get()
+                    final_output_path = self.convert_to_mp3(output_path, mp3_bitrate)
+                    print(f"MP3 conversion completed: {final_output_path}")
+                except Exception as e:
+                    print(f"MP3 conversion failed, but WAV file was created successfully: {e}")
+                    # Continue with WAV file as final output
+            
             # Update UI for successful completion
             if 'finish_conversion' in self.ui_callbacks:
-                self.ui_callbacks['finish_conversion'](output_path)
+                self.ui_callbacks['finish_conversion'](final_output_path)
             return True
             
         except Exception as e:

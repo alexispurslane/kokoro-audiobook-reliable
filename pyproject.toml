@@ -15,6 +15,7 @@ dependencies = [
     "numpy>=2.2.6",
     "sounddevice>=0.5.2",
     "simpleaudio>=1.0.4",
+    "pydub>=0.25.1",
 ]
 
 
