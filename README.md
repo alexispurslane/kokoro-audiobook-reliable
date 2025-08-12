@@ -2,34 +2,39 @@
 
 A graphical user interface for the Kokoro text-to-speech system with advanced features for processing long texts.
 
+![](./screenshot.png)
+
 ## Features
 
 - **Fast and high quality** text to speech conversion, thanks to Kokoro-82M
-- **Easy-to-use cross-platform native GUI** for converting text files to high-quality speech
-- **28 different voice options** including American, British, and other accents for both male and female voices
-- **Progress tracking** with real-time status updates and estimated time remaining
-- **Support for various audio output formats** (WAV, MP3, FLAC)
+- **Easy-to-use cross-platform GUI with native look-and-feel** for converting text files to high-quality speech
+- **28 different voice options with the ability to control voice speed and play voice samples** including American, British, and other accents for both male and female voices
+- **Progress tracking** with real-time status updates, a propotional progress bar, and estimated time remaining
+- **Support for MP3 output with specified bitrate** so that when you get a final WAV file, you can easily convert it to something smaller and more efficient
 - **Advanced text processing** with automatic sentence splitting and long sentence handling
-- **Exception-proof resume capability** - never lose progress on a long running project!
-- **Pause and Stop functionality** - pause conversions to resume later or stop without saving progress, based on the same resume capability features
+- **Exception-proof resume capability** so that you never lose progress on a long running project!
+- **Pause and stop functionality** that allows you to resume later or stop without saving progress, based on the same resume capability features
 - **Real-time console output** showing detailed processing information
+- **An advanced queuing system** that allows you to queue up multiple texts to be converted to speech audio, and monitor their progress, as well as individually remove or stop them, as well as pause the queue even mid-conversion of a text and then resume right where you left off later
 
 ## Unique Features
 
 The reason I made this app instead of using one of the many, many existing options, was that they all lacked two key features that my version has:
 
 ### Resume capability
-This automatically saves progress as a fully usable audio file as well as a lock file representing where the conversion left off and what settings it was using, so that it can resume interrupted conversions when you quit the application, send SIGINT or SIGTERM, or even if it runs into exceptions ---
+As chunks are converted, this program streams the chunk audio to an uncompressed wav file, so that if a sigterm or sigint is received, or the user quits the app, hits pause, or even if an exception is raised, all that needs to be done to save the progress achieved up until that point is to save a lockfile detailing which chunk the conversion left off at and what the conversion settings were, and to safely close the sound file. This doesn't just ensure that what was already done isn't lost, either: this program is capable of resuming from where it left off based on the lockfile and *continuing to add more audio to the incomplete audio file*, thus allowing arbitrary error recovery and pausing for the conversion.
 
 ### Long sentence handling
 Kokoro-82M text-to-speech degrades after ~250 characters; this causes problems for existing Kokoro TTS solutions, which split by sentence, but don't actually check to make sure sentences are small enough for it to process before feeding them into the model: long sentences can drop words or become whispers at the end. I implemented a recursive algorithm that first splits text at natural syntactic boundaries (semicolons, colons, emdashes, commas, conjunctions), then falls back to greedy word fitting if needed, to ensure that all chunks fed to Kokoro-82M are always below the character limit. After generating audio for each chunk, I then reassemble them with precisely trimmed silence, insert sentence pauses, and add double pauses at paragraph breaks, resulting in clear, accurate audio.
+
+### 
 
 ## Installation
 
 1. Clone the repository:
    ```bash
-   git clone <this repo>
-   cd <this repo>
+   git clone https://github.com/alexispurslane/kokoro-audiobook-reliable.git
+   cd kokoro-audiobook-reliable
    ```
 
 2. Install dependencies using uv:
@@ -44,16 +49,11 @@ Run the GUI application:
 uv run main.py
 ```
 
-## Requirements
+## System Requirements
 
 - Python 3.10 or higher (but less than 3.13)
 - uv (for dependency management)
-- kokoro 0.9.4 or higher
-- tkinter (usually included with Python)
-- nltk
-- torch
-- soundfile
-- ffmpeg<=0.6 (can automatically find and use this on Mac if it's installed with Homebrew)
+- ffmpeg <= 7.0
 
 ## How to Use
 
