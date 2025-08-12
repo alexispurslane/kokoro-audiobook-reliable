@@ -22,7 +22,7 @@ def trim_silence(audio_data, threshold=0.06, margin=100):
     
     # Trim leading silence with margin
     if len(non_silence_indices) > 0:
-        start_idx = max(0, non_silence_indices[0] - margin)
+        start_idx = max(0, non_silence_indices[0] - margin*2)
         end_idx = min(len(audio_data), non_silence_indices[-1] + margin*10)
         return audio_data[start_idx:end_idx]
     else:

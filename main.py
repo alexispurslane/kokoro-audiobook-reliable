@@ -56,6 +56,10 @@ class TextToSpeechApp:
         self.abort_conversion = threading.Event()
         self.was_error_or_force_quit = True  # Whether to create a lockfile when exiting
         
+        # Queue management
+        self.queue_items = []  # List of dictionaries with input_file, output_file, status
+        self.current_queue_index = -1  # Index of currently processing queue item
+        
         # Set up signal handlers for graceful shutdown
         self._setup_signal_handlers()
         
@@ -79,6 +83,7 @@ class TextToSpeechApp:
         
         # Create each section using dedicated functions
         self.create_file_settings_section(main_container)
+        self.create_queue_section(main_container)
         self.create_voice_settings_section(main_container)
         self.create_audio_processing_settings_section(main_container)
         self.create_progress_section(main_container)
@@ -128,6 +133,49 @@ class TextToSpeechApp:
         
         self.browse_output_btn = ttk.Button(output_row_frame, text="Browse", command=self.browse_output_file)
         self.browse_output_btn.pack(side="left")
+        
+    def create_queue_section(self, parent):
+        """Create the queue section with table view and control buttons"""
+        # Queue section
+        queue_frame = ttk.LabelFrame(parent, text="Queue", padding="10")
+        queue_frame.pack(fill="both", expand=True, pady=(0, 10))
+        
+        # Queue control buttons
+        queue_control_frame = ttk.Frame(queue_frame)
+        queue_control_frame.pack(fill="x", pady=(0, 10))
+        
+        self.add_to_queue_btn = ttk.Button(queue_control_frame, text="Add to Queue", command=self.add_to_queue)
+        self.add_to_queue_btn.pack(side="left", padx=(0, 5))
+        
+        self.clear_queue_btn = ttk.Button(queue_control_frame, text="Clear Queue", command=self.clear_queue)
+        self.clear_queue_btn.pack(side="left", padx=(0, 5))
+        
+        self.delete_selected_btn = ttk.Button(queue_control_frame, text="Delete Selected", command=self.delete_selected_queue_item)
+        self.delete_selected_btn.pack(side="left")
+        
+        # Queue table
+        queue_table_container = ttk.Frame(queue_frame)
+        queue_table_container.pack(fill="both", expand=True)
+        
+        # Create treeview for queue items
+        columns = ("input_file", "output_file", "status")
+        self.queue_tree = ttk.Treeview(queue_table_container, columns=columns, show="headings", height=6)
+        
+        # Define column headings and widths
+        self.queue_tree.heading("input_file", text="Input File")
+        self.queue_tree.heading("output_file", text="Output File")
+        self.queue_tree.heading("status", text="Status")
+        
+        self.queue_tree.column("input_file", width=200)
+        self.queue_tree.column("output_file", width=200)
+        self.queue_tree.column("status", width=100)
+        
+        # Add scrollbar
+        queue_scrollbar = ttk.Scrollbar(queue_table_container, orient="vertical", command=self.queue_tree.yview)
+        self.queue_tree.configure(yscrollcommand=queue_scrollbar.set)
+        
+        self.queue_tree.pack(side="left", fill="both", expand=True)
+        queue_scrollbar.pack(side="right", fill="y")
         
     def create_voice_settings_section(self, parent):
         """Create the voice settings section with voice selection dropdown"""
@@ -295,6 +343,78 @@ class TextToSpeechApp:
             print(f"Selected output file: {file_path}")
             self.output_path_var.set(file_path)
 
+    def add_to_queue(self):
+        """Add current input and output files to the queue"""
+        input_path = self.input_path_var.get()
+        output_path = self.output_path_var.get()
+        
+        if not input_path:
+            messagebox.showwarning("Warning", "Please select an input text file.")
+            return
+            
+        if not output_path:
+            messagebox.showwarning("Warning", "Please specify an output audio file path.")
+            return
+            
+        if not os.path.exists(input_path):
+            messagebox.showerror("Error", "Input file does not exist.")
+            return
+        
+        # Add to queue
+        queue_item = {
+            'input_file': input_path,
+            'output_file': output_path,
+            'status': '⏳ Pending'
+        }
+        
+        self.queue_items.append(queue_item)
+        
+        # Add to treeview
+        self.queue_tree.insert("", "end", values=(
+            os.path.basename(input_path),
+            os.path.basename(output_path),
+            '⏳ Pending'
+        ))
+        
+        # Clear input and output fields
+        self.input_path_var.set("")
+        self.output_path_var.set("")
+        
+        print(f"Added to queue: {input_path} -> {output_path}")
+
+    def clear_queue(self):
+        """Clear all items from the queue"""
+        if not self.queue_items:
+            return
+            
+        result = messagebox.askyesno(
+            "Clear Queue",
+            "Are you sure you want to clear all items from the queue?",
+            icon="warning"
+        )
+        
+        if result:
+            self.queue_items.clear()
+            self.queue_tree.delete(*self.queue_tree.get_children())
+            print("Queue cleared")
+
+    def delete_selected_queue_item(self):
+        """Delete the selected item from the queue"""
+        selected_item = self.queue_tree.selection()
+        if not selected_item:
+            messagebox.showwarning("Warning", "Please select an item to delete.")
+            return
+            
+        # Get the index of the selected item
+        item_index = self.queue_tree.index(selected_item[0])
+        
+        # Remove from queue items list
+        del self.queue_items[item_index]
+        
+        # Remove from treeview
+        self.queue_tree.delete(selected_item[0])
+        
+        print(f"Deleted queue item at index {item_index}")
 
     def _pull_resume_info(self):
         lockfile_path = self.input_path_var.get() + ".lock"
@@ -337,7 +457,6 @@ class TextToSpeechApp:
                 
     def _cleanup_on_exit(self):
         """Clean up resources on exit. NOTE: Runs on worker thread now!"""
-        self.abort_conversion.clear()
         # Close any open SoundFile
         if self.current_soundfile is not None:
             try:
@@ -391,29 +510,38 @@ class TextToSpeechApp:
     def convert_to_speech(self):
         """Convert text file to speech"""
         print("Starting conversion process...")
+        self.abort_conversion.clear()
         if not self.pipeline_loaded:
             messagebox.showwarning("Warning", "Pipeline is still loading. Please wait.")
             return
-            
-        input_path = self.input_path_var.get()
-        output_path = self.output_path_var.get()
-        print("Output path: " + output_path)
         
-        if not input_path:
-            messagebox.showwarning("Warning", "Please select an input text file.")
-            return
+        # Check if queue has items
+        if self.queue_items:
+            # Process queue
+            self.current_queue_index = 0
+            self.convert_worker_thread = threading.Thread(target=self._process_queue_worker, daemon=True)
+            self.convert_worker_thread.start()
+        else:
+            # Process single file (original behavior)
+            input_path = self.input_path_var.get()
+            output_path = self.output_path_var.get()
+            print("Output path: " + output_path)
             
-        if not output_path:
-            messagebox.showwarning("Warning", "Please specify an output audio file path.")
-            return
-            
-        if not os.path.exists(input_path):
-            messagebox.showerror("Error", "Input file does not exist.")
-            return
-            
-        # Start conversion in background thread
-        self.convert_worker_thread = threading.Thread(target=self._convert_worker, args=(input_path, output_path), daemon=True)
-        self.convert_worker_thread.start()
+            if not input_path:
+                messagebox.showwarning("Warning", "Please select an input text file.")
+                return
+                
+            if not output_path:
+                messagebox.showwarning("Warning", "Please specify an output audio file path.")
+                return
+                
+            if not os.path.exists(input_path):
+                messagebox.showerror("Error", "Input file does not exist.")
+                return
+                
+            # Start conversion in background thread
+            self.convert_worker_thread = threading.Thread(target=self._convert_worker, args=(input_path, output_path), daemon=True)
+            self.convert_worker_thread.start()
         
     def abort_conversion_process(self):
         """Abort the current conversion process"""
@@ -446,6 +574,9 @@ class TextToSpeechApp:
             # Don't create lockfile when stopping
             self.was_error_or_force_quit = False
             self._wait_for_worker()
+            del self.queue_items[self.current_queue_index]
+            self.queue_tree.delete(self.queue_tree.get_children()[self.current_queue_index])
+            self.current_queue_index = 0
             # We'll handle the cleanup in the worker thread
             self.root.after(0, self._stop_conversion_ui)
         
@@ -501,7 +632,7 @@ class TextToSpeechApp:
                     print("Conversion aborted by user")
                     # Cleanup with the appropriate lockfile setting
                     self._cleanup_on_exit()
-                    return
+                    return False
 
                 self.current_chunk_idx = progress_info['processed_chunks'] - 1
                 self.root.after(0, lambda msg=progress_info['progress_msg']: self.status_var.set(msg))
@@ -511,6 +642,7 @@ class TextToSpeechApp:
             
             # Update UI for successful completion
             self.root.after(0, self._finish_conversion_ui, output_path)
+            return True
             
         except Exception as e:
             # Only create lockfile if we want to create one
@@ -520,6 +652,98 @@ class TextToSpeechApp:
             # Update UI for error
             traceback.print_exc()
             self.root.after(0, self._error_conversion_ui, str(e))
+
+    def _process_queue_worker(self):
+        """Worker function to process queue items in background"""
+        try:
+            print("Starting queue processing...")
+            
+            # Update UI for queue processing start
+            self.root.after(0, self._start_conversion_ui)
+            
+            # Process each item in the queue
+            for i, queue_item in enumerate(self.queue_items):
+                
+                self.current_queue_index = i
+                input_path = queue_item['input_file']
+                output_path = queue_item['output_file']
+                
+                # Update queue item status to processing
+                queue_item['status'] = '⚙️ Processing'
+                self.root.after(0, lambda idx=i, status='⚙️ Processing': self._update_queue_item_status(idx, status))
+                
+                print(f"Processing queue item {i+1}/{len(self.queue_items)}: {input_path}")
+                
+                # Set up for this queue item (always start fresh)
+                self.input_path_var.set(input_path)
+                self.output_path_var.set(output_path)
+                self.sf_mode = 'w'
+                self.start_chunk_idx = 0
+                self._pull_resume_info()
+                
+                # Process this item using the existing convert worker
+                try:
+                    result = self._convert_worker(input_path, output_path)
+                    if result:
+                        # If we get here without exception, the item completed successfully
+                        queue_item['status'] = '✅ Completed'
+                        self.root.after(0, lambda idx=i, status='✅ Completed': self._update_queue_item_status(idx, status))
+                    else:
+                        queue_item['status'] = '⏸️ Paused'
+                        self.root.after(0, lambda idx=i, status='⏸️ Paused': self._update_queue_item_status(idx, status))
+                        print(f"Queue item {i+1} paused")
+                        break
+                except Exception as e:
+                    # Update queue item status to failed
+                    queue_item['status'] = '❌ Failed'
+                    self.root.after(0, lambda idx=i, status='❌ Failed': self._update_queue_item_status(idx, status))
+                    print(f"Queue item {i+1} failed")
+                    # Stop processing on failure
+                    break
+                
+                if self.abort_conversion.is_set():
+                    print("Queue processing aborted by user")
+                    self.abort_conversion.clear()
+                    break
+                
+            # Update UI for queue completion
+            self.root.after(0, self._finish_queue_processing_ui)
+            
+        except Exception as e:
+            # Ensure cleanup happens
+            self._cleanup_on_exit()
+            traceback.print_exc()
+            self.root.after(0, self._error_conversion_ui, str(e))
+
+    def _update_queue_item_status(self, index, status):
+        """Update the status of a queue item in the treeview"""
+        # Get all items in the treeview
+        children = self.queue_tree.get_children()
+        if index < len(children):
+            # Get the current values
+            current_values = self.queue_tree.item(children[index])['values']
+            # Update the status (third column)
+            new_values = (current_values[0], current_values[1], status)
+            self.queue_tree.item(children[index], values=new_values)
+
+    def _finish_queue_processing_ui(self):
+        """Update UI when queue processing finishes"""
+        self.conversion_in_progress = False
+        if self.was_error_or_force_quit:
+            self.current_queue_index = -1
+        
+        # Calculate total time
+        if self.start_time is not None:
+            total_time = time.time() - self.start_time
+            total_mins, total_secs = divmod(int(total_time), 60)
+            total_time_str = f"Total time: {total_mins:02d}:{total_secs:02d}"
+        else:
+            total_time_str = ""
+            
+        self._set_ui_state(enabled=True)
+        self.status_var.set("Queue processing completed!")
+        self.timer_var.set(total_time_str)
+        messagebox.showinfo("Success", "Queue processing completed!")
 
     def _wait_for_worker(self):
         while self.convert_worker_thread is not None and self.convert_worker_thread.is_alive():
@@ -538,6 +762,10 @@ class TextToSpeechApp:
             self.voice_dropdown.config(state="normal")
             self.convert_btn.config(state="normal", text="Convert to Speech", command=self.convert_to_speech)
             self.stop_btn.config(state="disabled")
+            # Enable queue controls
+            self.add_to_queue_btn.config(state="normal")
+            self.clear_queue_btn.config(state="normal")
+            self.delete_selected_btn.config(state="normal")
         else:
             self.progress.pack(fill="x", pady=(10, 0))
             self.input_entry.config(state="disabled")
@@ -547,6 +775,10 @@ class TextToSpeechApp:
             self.voice_dropdown.config(state="disabled")
             self.convert_btn.config(state="normal", text="Pause", command=self.abort_conversion_process)
             self.stop_btn.config(state="normal")
+            # Disable queue controls during processing
+            self.add_to_queue_btn.config(state="disabled")
+            self.clear_queue_btn.config(state="disabled")
+            self.delete_selected_btn.config(state="disabled")
         
     def _start_conversion_ui(self):
         """Update UI when conversion starts"""

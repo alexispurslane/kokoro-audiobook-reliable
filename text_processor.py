@@ -53,7 +53,7 @@ def split_long_sentence(sentence, max_chars=250):
         return [sentence]
     
     # Split at natural breakpoints first (commas, semicolons, etc.)
-    breakpoints = [';', ':', '-', '–', '—', ',', ' and ', ' or ']
+    breakpoints = [';', ':', '–', '—', ',', ' and ', ' or ']
     
     # Start with the whole sentence as one chunk
     chunks = [sentence]
@@ -104,13 +104,15 @@ def split_and_prepare_text(text):
         '&': 'and',
         '*': 'star',
         '_': 'underscore',
+        ' - ': '—',
         '---': '—',
+        '--': '—',
         '(': ',',
         ')': ',',
         '[': ',',
         ']': ',',
         '"': 'quote',
-        '/': 'forward slash',
+        '/': 'slash',
         '\\': 'backslash'
     }
     
