@@ -28,6 +28,10 @@ This doesn't just ensure that what was already done isn't lost, either: this pro
 
 This is so seamless that it even allows the user to manually *choose* to pause conversion, if for instance they're doing it on a laptop and will be on battery power or out of batter for some amount of time, or need the compute for something else, and then resume it hassle-free. It also allows the conversion to be manually stopped partway, while still producing a perfectly fine audio file, in case only part of the input text needs to be converted for whatever reason.
 
+### Low, constant memory usage
+
+Thanks to the fact that all audio is written directly to the output file as soon as it is synthesized, it can immediately be deleted from memory, meaning that instead of monotonically rising memory usage that may eventually lead to an out of memory error or the computer crashing --- which has happened to me with mlx-audio --- this app consistently only uses about 400MB of memory, and that does not rise over time.
+
 ### Long sentence handling
 Kokoro-82M text-to-speech degrades after ~250 characters; this causes problems for existing Kokoro TTS solutions, which split by sentence, but don't actually check to make sure sentences are small enough for it to process before feeding them into the model: long sentences can drop words or become whispers at the end. I implemented a recursive algorithm that first splits text at natural syntactic boundaries (semicolons, colons, emdashes, commas, conjunctions), then falls back to greedy word fitting if needed, to ensure that all chunks fed to Kokoro-82M are always below the character limit. After generating audio for each chunk, I then reassemble them with precisely trimmed silence, insert sentence pauses, and add double pauses at paragraph breaks, resulting in clear, accurate audio.
 
