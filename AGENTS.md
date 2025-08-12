@@ -2,7 +2,7 @@
 
 ## Build/Test Commands
 - Syntax checking: `uv run python -m py_compile`
-- Type checking: `pyright` (configured in pyproject.toml)
+- Type checking: `uv run pyright` (configured in pyproject.toml)
 - No linting commands configured - add if needed
 - **NEVER run the application yourself** - use `uv run python` for all Python execution
 

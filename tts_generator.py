@@ -28,12 +28,12 @@ def trim_silence(audio_data, threshold=0.06, margin=100):
     else:
         return audio_data
 
-def process_chunk(pipeline, chunk, voice, threshold=0.06, margin=10):
+def process_chunk(pipeline, chunk, voice, threshold=0.06, margin=10, speed=1.0, sample_rate=24000):
     """Process a single chunk and return the audio tensor or a pause marker"""
     # Check if this is a pause marker
     if chunk == "SENTENCE_END_PAUSE_MARKER":
         # Create a pause instead of audio
-        pause = torch.zeros((int(24000*0.5), 1))  # shape (time, channels)
+        pause = torch.zeros((int(sample_rate*0.5), 1))  # shape (time, channels)
         return pause.cpu().numpy()
     
     max_retries = 10
@@ -43,7 +43,7 @@ def process_chunk(pipeline, chunk, voice, threshold=0.06, margin=10):
         try:
             # Generate audio for this chunk using kokoro
             # Kokoro's API returns a generator, so we need to extract the audio
-            generator = pipeline(chunk, voice=voice)
+            generator = pipeline(chunk, voice=voice, speed=speed)
             # Get the first (and typically only) result from the generator
             result = next(generator)
             # The result is a tuple (grapheme_segment, phoneme_segment, audio_tensor)
@@ -54,6 +54,11 @@ def process_chunk(pipeline, chunk, voice, threshold=0.06, margin=10):
                 audio = audio.unsqueeze(1)  # Add channel dimension if missing
             elif audio.dim() == 2 and audio.shape[0] < audio.shape[1]:
                 audio = audio.T  # Transpose if needed to get (time, channels) format
+            
+            # Resample audio if needed
+            if sample_rate != 24000:  # Kokoro default is 24000 Hz
+                import torchaudio
+                audio = torchaudio.functional.resample(audio.T, 24000, sample_rate).T
             
             # Load audio onto cpu, convert to numpy, trim leading silence to reduce awkward pauses, then return it.
             return trim_silence(audio.cpu().numpy(), threshold=threshold, margin=margin)
@@ -68,7 +73,7 @@ def process_chunk(pipeline, chunk, voice, threshold=0.06, margin=10):
     return None
 
 
-def generate_long(pipeline, text, current_soundfile, output_path, voice='af_heart', start_time=None, start_chunk_idx=0, sf_mode='w', threshold=0.06, margin=10):
+def generate_long(pipeline, text, current_soundfile, output_path, voice='af_heart', start_time=None, start_chunk_idx=0, sf_mode='w', threshold=0.06, margin=10, speed=1.0, sample_rate=24000):
     """Generate long-form speech with resume capability"""
     # Get lockfile path
     lockfile_path = output_path + ".lock"
@@ -99,7 +104,7 @@ def generate_long(pipeline, text, current_soundfile, output_path, voice='af_hear
             progress_msg = f"Processing chunk {processed_chunks}/{total_chunks}: {chunk[:50]}..."
             timer_msg = f"Elapsed: {elapsed_mins:02d}:{elapsed_secs:02d} | Remaining: {remaining_mins:02d}:{remaining_secs:02d}"
             
-            result = process_chunk(pipeline, chunk, voice, threshold=threshold, margin=margin)
+            result = process_chunk(pipeline, chunk, voice, threshold=threshold, margin=margin, speed=speed, sample_rate=sample_rate)
                 
             # Write audio chunk directly to file
             if result is not None:

@@ -240,6 +240,7 @@ class TextToSpeechApp:
         voice_frame = ttk.LabelFrame(parent, text="Voice Settings", padding="10")
         voice_frame.pack(fill="x", pady=(0, 10))
         
+        # Voice selection
         ttk.Label(voice_frame, text="Voice:").pack(anchor="w")
         
         self.voice_var = tk.StringVar(value="af_heart")
@@ -287,6 +288,33 @@ class TextToSpeechApp:
         # Play Sample button (disabled initially until pipeline loads)
         self.play_sample_btn = ttk.Button(voice_control_frame, text="Play Sample", command=self.play_sample, state="disabled")
         self.play_sample_btn.pack(side="left")
+        
+        # Voice speed slider
+        ttk.Label(voice_frame, text="Voice Speed:").pack(anchor="w", pady=(10, 0))
+        
+        speed_container = ttk.Frame(voice_frame)
+        speed_container.pack(fill="x", pady=(5, 0))
+        
+        self.speed_var = tk.DoubleVar(value=1.0)  # Default speed (1.0 = normal)
+        self.speed_slider = ttk.Scale(speed_container, from_=0.5, to=2.0, variable=self.speed_var, orient="horizontal")
+        self.speed_slider.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        
+        self.speed_value_label = ttk.Label(speed_container, text=f"{self.speed_var.get():.1f}x")
+        self.speed_value_label.pack(side="left")
+        
+        # Update speed value display when slider moves
+        self.speed_slider.configure(command=self.update_speed_display)
+        
+        # Sample rate spinner
+        ttk.Label(voice_frame, text="Sample Rate (Hz):").pack(anchor="w", pady=(10, 0))
+        
+        sample_rate_frame = ttk.Frame(voice_frame)
+        sample_rate_frame.pack(fill="x", pady=(5, 0))
+        
+        self.sample_rate_var = tk.IntVar(value=24000)  # Default sample rate
+        self.sample_rate_spinbox = ttk.Spinbox(sample_rate_frame, from_=8000, to=48000, increment=1000, textvariable=self.sample_rate_var, width=10)
+        self.sample_rate_spinbox.pack(side="left")
+        ttk.Label(sample_rate_frame, text="Hz").pack(side="left", padx=(5, 0))
         
     def create_audio_processing_settings_section(self, parent):
         """Create the audio processing settings section with threshold slider and margin spinbox"""
@@ -490,6 +518,8 @@ class TextToSpeechApp:
                 with open(lockfile_path, 'r') as lf:
                     resume_info = json.load(lf)
                     self.voice_var.set(resume_info['voice'])
+                    self.speed_var.set(resume_info.get('speed', 1.0))
+                    self.sample_rate_var.set(resume_info.get('sample_rate', 24000))
                     self.start_chunk_idx = resume_info.get('failed_chunk_index', 0) or 0
             except (json.JSONDecodeError, FileNotFoundError) as e:
                 print(f"Warning: Error loading lockfile: {e}. Starting from beginning.")
@@ -503,7 +533,7 @@ class TextToSpeechApp:
             self.start_chunk_idx = 0 # Restart if file doesn't exist to build on
 
         if resume_info:
-            self.status_var.set(f"Resuming from chunk {self.start_chunk_idx + 1} with voice {self.voice_var.get()}...")
+            self.status_var.set(f"Resuming from chunk {self.start_chunk_idx + 1} with voice {self.voice_var.get()}, speed {self.speed_var.get()}x, sample rate {self.sample_rate_var.get()}Hz...")
             
         self.root.update()
 
@@ -537,6 +567,8 @@ class TextToSpeechApp:
                     'failed_chunk_index': self.current_chunk_idx,
                     'error_message': 'Interrupted by user/system shutdown',
                     'voice': self.voice_var.get(),
+                    'speed': self.speed_var.get(),
+                    'sample_rate': self.sample_rate_var.get(),
                     'timestamp': time.time()
                 }
                 with open(lockfile_path, 'w') as lf:
@@ -674,10 +706,12 @@ class TextToSpeechApp:
         # Static sample text
         sample_text = "Hello! This is a sample of how the selected voice sounds. I hope you like it!"
         
-        # Get selected voice
+        # Get selected voice and parameters
         voice = self.voice_var.get()
+        speed = self.speed_var.get()
+        sample_rate = self.sample_rate_var.get()
         
-        print(f"Playing sample with voice: {voice}")
+        print(f"Playing sample with voice: {voice}, speed: {speed}x, sample rate: {sample_rate}Hz")
         self.status_var.set(f"Playing sample with {voice}...")
         
         # Generate audio in a separate thread to avoid blocking UI
@@ -686,7 +720,8 @@ class TextToSpeechApp:
                 # Generate audio using the pipeline
                 audio_generator = self.pipeline(
                     sample_text,
-                    voice=voice
+                    voice=voice,
+                    speed=speed
                 )
                 
                 # Collect all audio chunks
@@ -701,12 +736,17 @@ class TextToSpeechApp:
                 # Concatenate all audio chunks
                 full_audio = np.concatenate(audio_chunks)
                 
+                # Resample if needed
+                if sample_rate != 24000:  # Kokoro default is 24000 Hz
+                    import torchaudio
+                    full_audio = torchaudio.functional.resample(full_audio.T, 24000, sample_rate).T
+                
                 # Create a temporary file
                 with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
                     temp_path = temp_file.name
                     
                 # Save audio to temporary file
-                sf.write(temp_path, full_audio, 24000)
+                sf.write(temp_path, full_audio, sample_rate)
                 
                 # Play the audio file
                 wave_obj = sa.WaveObject.from_wave_file(temp_path)
@@ -908,6 +948,10 @@ class TextToSpeechApp:
     def update_threshold_display(self, value):
         """Update the threshold value display"""
         self.threshold_value_label.config(text=f"{float(value):.2f}")
+    
+    def update_speed_display(self, value):
+        """Update the speed value display"""
+        self.speed_value_label.config(text=f"{float(value):.1f}x")
 
 def main():
     root = tk.Tk()

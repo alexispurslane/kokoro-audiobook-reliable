@@ -45,11 +45,15 @@ class ConvertWorker:
             # Get selected voice
             voice = self.app.voice_var.get()
                         
+            # Get speed and sample rate from UI
+            speed = self.app.speed_var.get()
+            sample_rate = self.app.sample_rate_var.get()
+            
             # Call generate_long with the required parameters
             if self.app.sf_mode == 'r+':
                 self.app.current_soundfile = sf.SoundFile(output_path, self.app.sf_mode)
             else:
-                self.app.current_soundfile = sf.SoundFile(output_path, self.app.sf_mode, 24000, 1, 'PCM_16')
+                self.app.current_soundfile = sf.SoundFile(output_path, self.app.sf_mode, sample_rate, 1, 'PCM_16')
                 
             for progress_info in generate_long(
                     self.app.pipeline,
@@ -61,7 +65,9 @@ class ConvertWorker:
                     self.app.start_chunk_idx,
                     self.app.sf_mode,
                     round(self.app.threshold_var.get(), 2),  # Pass threshold from UI slider
-                    int(self.app.margin_var.get() * 24)  # Convert ms to samples (24000 Hz = 24 samples per ms)
+                    int(self.app.margin_var.get() * sample_rate / 1000),  # Convert ms to samples based on sample rate
+                    speed,  # Pass speed from UI slider
+                    sample_rate  # Pass sample rate from UI spinner
             ):
                 # Check if abort was requested
                 if self.app.app_state.is_aborted:
