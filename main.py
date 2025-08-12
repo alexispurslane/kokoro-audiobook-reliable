@@ -1,9 +1,5 @@
 import os
-import traceback
 import sys
-import time
-import json
-import signal
 
 # Check if we're already running with correct FFmpeg path and restart if needed
 ffmpeg_lib_path = '/opt/homebrew/opt/ffmpeg@6/lib'
@@ -17,15 +13,76 @@ if ffmpeg_lib_path not in current_dyld_path:
     # Restart the script with correct environment
     os.execvpe(sys.executable, [sys.executable] + sys.argv, new_env)
 
+import time
+import json
+import signal
+import tempfile
+import simpleaudio as sa
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from kokoro import KPipeline
 import threading
+import numpy as np
 import soundfile as sf
-from soundfile import SoundFile, SEEK_END
 
 # Import our new modules
 from tts_generator import process_chunk, generate_long
+from queue_worker import QueueWorker
+from convert_worker import ConvertWorker
+    
+class AppState:
+    """Atomic application state manager with automatic worker waiting"""
+    IDLE = "IDLE"
+    PROCESSING = "PROCESSING"
+    ERROR = "ERROR"
+    STOP = "STOP"
+    
+    def __init__(self, initial_state=None, wait_for_worker_callback=None):
+        self._state = initial_state or self.IDLE
+        self._wait_for_worker_callback = wait_for_worker_callback
+        self._main_thread_id = threading.get_ident()
+    
+    def get_state(self):
+        """Get current state atomically"""
+        return self._state
+    
+    def set_state(self, new_state):
+        """Set new state atomically, with automatic worker waiting on main thread"""
+        old_state = self._state
+        self._state = new_state
+        
+        # If transitioning to ERROR or STOP on main thread, call wait_for_worker
+        if (new_state in (self.ERROR, self.STOP) and 
+            old_state not in (self.ERROR, self.STOP) and
+            self._wait_for_worker_callback is not None and
+            threading.get_ident() == self._main_thread_id):
+            print(f"State changed to {new_state} on main thread, waiting for worker...")
+            self._wait_for_worker_callback()
+    
+    @property
+    def state(self):
+        """Property access to current state"""
+        return self._state
+    
+    @state.setter
+    def state(self, new_state):
+        """Property setter for state"""
+        self.set_state(new_state)
+    
+    @property
+    def is_active(self):
+        """True if state represents an active conversion process"""
+        return self._state == self.PROCESSING
+    
+    @property
+    def should_create_lockfile(self):
+        """True if state should create a lockfile on exit"""
+        return self._state in (self.PROCESSING, self.ERROR)
+    
+    @property
+    def is_aborted(self):
+        """True if state represents an aborted process"""
+        return self._state in (self.ERROR, self.STOP)
 
 class TextToSpeechApp:
     def __init__(self, root):
@@ -50,11 +107,9 @@ class TextToSpeechApp:
         self.start_chunk_idx = 0
         self.sf_mode = 'w'
         
-        # Track conversion state
+        # Track conversion state with atomic state management
         self.convert_worker_thread = None
-        self.conversion_in_progress = False
-        self.abort_conversion = threading.Event()
-        self.was_error_or_force_quit = True  # Whether to create a lockfile when exiting
+        self.app_state = AppState(wait_for_worker_callback=self._wait_for_worker)
         
         # Queue management
         self.queue_items = []  # List of dictionaries with input_file, output_file, status
@@ -68,6 +123,8 @@ class TextToSpeechApp:
         
         # Create UI elements
         self.create_widgets()
+        
+        # No initialization needed for playsound
         
         # Load pipeline in background
         self.load_pipeline()
@@ -219,9 +276,17 @@ class TextToSpeechApp:
             "am_santa"
         ]
         
-        self.voice_dropdown = ttk.Combobox(voice_frame, textvariable=self.voice_var, values=voices, state="readonly", width=30)
-        self.voice_dropdown.pack(pady=(5, 0))
+        # Create a frame for voice dropdown and play sample button
+        voice_control_frame = ttk.Frame(voice_frame)
+        voice_control_frame.pack(fill="x", pady=(5, 0))
+        
+        self.voice_dropdown = ttk.Combobox(voice_control_frame, textvariable=self.voice_var, values=voices, state="readonly", width=30)
+        self.voice_dropdown.pack(side="left", padx=(0, 5))
         self.voice_dropdown.set("af_heart")  # Set default value
+        
+        # Play Sample button (disabled initially until pipeline loads)
+        self.play_sample_btn = ttk.Button(voice_control_frame, text="Play Sample", command=self.play_sample, state="disabled")
+        self.play_sample_btn.pack(side="left")
         
     def create_audio_processing_settings_section(self, parent):
         """Create the audio processing settings section with threshold slider and margin spinbox"""
@@ -274,7 +339,7 @@ class TextToSpeechApp:
         self.timer_label.pack(anchor="w", pady=(5, 0))
         
         # Progress bar
-        self.progress = ttk.Progressbar(progress_frame, mode='determinate')
+        self.progress = ttk.Progressbar(progress_frame, mode='determinate', maximum=1)
         self.progress.pack(fill="x", pady=(10, 0))
         self.progress.pack_forget()  # Hide initially
         
@@ -450,9 +515,7 @@ class TextToSpeechApp:
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully"""
         print(f"Received signal {signum}, cleaning up...")
-        self.abort_conversion.set()
-        self.was_error_or_force_quit = True
-        self._wait_for_worker()
+        self.app_state.set_state(AppState.ERROR)
         self.root.destroy()
                 
     def _cleanup_on_exit(self):
@@ -465,10 +528,10 @@ class TextToSpeechApp:
             except Exception as e:
                 print(f"Error closing SoundFile: {e}")
 
-        # Create lockfile if this was an error or force quit and we were in the middle of doing a conversion
+        # Create lockfile if state indicates we should create one and we were in the middle of conversion
         input_path = self.input_path_var.get()
         lockfile_path = input_path + ".lock"
-        if self.was_error_or_force_quit and input_path and self.current_chunk_idx is not None:
+        if self.app_state.should_create_lockfile and input_path and self.current_chunk_idx is not None:
             try:
                 failure_info = {
                     'failed_chunk_index': self.current_chunk_idx,
@@ -499,8 +562,9 @@ class TextToSpeechApp:
                 self.pipeline = KPipeline(repo_id='hexgrad/Kokoro-82M', lang_code='a') # 'a' for American English
                 self.pipeline_loaded = True
                 self.status_var.set("Pipeline loaded. Ready to convert.")
-                # Enable the convert button now that pipeline is loaded
+                # Enable the convert and play sample buttons now that pipeline is loaded
                 self.convert_btn.config(state="normal")
+                self.play_sample_btn.config(state="normal")
             except Exception as e:
                 self.status_var.set(f"Error loading pipeline: {str(e)}")
                 messagebox.showerror("Error", f"Failed to load Kokoro pipeline:\n{str(e)}")
@@ -510,16 +574,37 @@ class TextToSpeechApp:
     def convert_to_speech(self):
         """Convert text file to speech"""
         print("Starting conversion process...")
-        self.abort_conversion.clear()
         if not self.pipeline_loaded:
             messagebox.showwarning("Warning", "Pipeline is still loading. Please wait.")
             return
+
+        self._pull_resume_info()
+
+        convert_ui_callbacks = {
+            'start_conversion': lambda: self.root.after(0, self._start_conversion_ui),
+            'update_progress': lambda progress_msg, timer_msg, progress_value: self.root.after(0, lambda: (
+                self.status_var.set(progress_msg),
+                self.timer_var.set(timer_msg),
+                self.progress.configure(value=progress_value)
+            )),
+            'finish_conversion': lambda output_path: self.root.after(0, lambda: self._finish_conversion_ui(output_path)),
+            'error_conversion': lambda error_msg: self.root.after(0, lambda: self._error_conversion_ui(error_msg))
+        }
+
+        
+        queue_ui_callbacks = {
+            'update_queue_item_status': lambda idx, status: self.root.after(0, lambda: self._update_queue_item_status(idx, status)),
+            'finish_queue_processing': lambda: self.root.after(0, self._finish_queue_processing_ui),
+        }
         
         # Check if queue has items
         if self.queue_items:
             # Process queue
+            self.app_state.set_state(AppState.PROCESSING)
             self.current_queue_index = 0
-            self.convert_worker_thread = threading.Thread(target=self._process_queue_worker, daemon=True)
+            
+            queue_worker = QueueWorker(self, ui_callbacks=queue_ui_callbacks | convert_ui_callbacks)
+            self.convert_worker_thread = threading.Thread(target=queue_worker.process_queue, daemon=True)
             self.convert_worker_thread.start()
         else:
             # Process single file (original behavior)
@@ -540,12 +625,15 @@ class TextToSpeechApp:
                 return
                 
             # Start conversion in background thread
-            self.convert_worker_thread = threading.Thread(target=self._convert_worker, args=(input_path, output_path), daemon=True)
+            self.app_state.set_state(AppState.PROCESSING)
+            
+            convert_worker = ConvertWorker(self, ui_callbacks=convert_ui_callbacks)
+            self.convert_worker_thread = threading.Thread(target=convert_worker.convert_file, args=(input_path, output_path), daemon=True)
             self.convert_worker_thread.start()
         
     def abort_conversion_process(self):
         """Abort the current conversion process"""
-        print("Pausinging conversion process...")
+        print("Pausing conversion process...")
         result = messagebox.askyesno(
             "Pause Conversion",
             "Are you sure you want to pause the conversion?\n\n"
@@ -553,10 +641,7 @@ class TextToSpeechApp:
             icon="warning"
         )
         if result:
-            self.abort_conversion.set()
             # We want to create a lockfile when aborting
-            self.was_error_or_force_quit = True
-            self._wait_for_worker()
             self.root.after(0, self._abort_conversion_ui)
                                     
     def stop_conversion(self):
@@ -569,151 +654,79 @@ class TextToSpeechApp:
             icon="warning"
         )
         if result:
-            # Set abort flag to stop the conversion
-            self.abort_conversion.set()
-            # Don't create lockfile when stopping
-            self.was_error_or_force_quit = False
-            self._wait_for_worker()
-            del self.queue_items[self.current_queue_index]
-            self.queue_tree.delete(self.queue_tree.get_children()[self.current_queue_index])
-            self.current_queue_index = 0
+            # Don't create lockfile when stopping - set to STOP
+            self.app_state.set_state(AppState.STOP)
+            if len(self.queue_items) > 0:
+                del self.queue_items[self.current_queue_index]
+                self.queue_tree.delete(self.queue_tree.get_children()[self.current_queue_index])
+                self.current_queue_index = 0
+            else:
+                print("Queue is already empty.")
             # We'll handle the cleanup in the worker thread
             self.root.after(0, self._stop_conversion_ui)
         
-    def _convert_worker(self, input_path, output_path):
-        """Worker function to perform conversion in background"""
-        try:
-            print(f"Starting conversion worker for {input_path}")
-            # Record start time
-            start_time = time.time()
-            self.start_time = start_time
-            
-            # Update UI for conversion start
-            self.root.after(0, self._start_conversion_ui)
-            
-            # Check if pipeline is loaded
-            if not self.pipeline_loaded:
-                raise ValueError("Pipeline not loaded")
+    def play_sample(self):
+        """Play a sample of text with the selected voice"""
+        if not self.pipeline_loaded:
+            messagebox.showwarning("Warning", "Pipeline is still loading. Please wait.")
+            return
+        
+        # Static sample text
+        sample_text = "Hello! This is a sample of how the selected voice sounds. I hope you like it!"
+        
+        # Get selected voice
+        voice = self.voice_var.get()
+        
+        print(f"Playing sample with voice: {voice}")
+        self.status_var.set(f"Playing sample with {voice}...")
+        
+        # Generate audio in a separate thread to avoid blocking UI
+        def generate_and_play():
+            try:
+                # Generate audio using the pipeline
+                audio_generator = self.pipeline(
+                    sample_text,
+                    voice=voice
+                )
                 
-            # Read text file
-            with open(input_path, 'r', encoding='utf-8') as f:
-                text = f.read().strip() + f"""
-
-                We have now reached the end of your audiobook. This was read to you by Kokoro-82M using the {self.voice_var.get()} voice, through Alexis Dumas's TTS program designed for long texts and reliability.
-
-                Thank you!
-                """
+                # Collect all audio chunks
+                audio_chunks = []
+                for i, (code, phonemes, audio) in enumerate(audio_generator):
+                    if audio is not None:
+                        audio_chunks.append(audio)
                 
-            if not text:
-                raise ValueError("Input file is empty")
+                if not audio_chunks:
+                    raise ValueError("No audio generated")
                 
-            # Get selected voice
-            voice = self.voice_var.get()
-                        
-            # Call generate_long with the required parameters
-            if self.sf_mode == 'r+':
-                self.current_soundfile = sf.SoundFile(output_path, self.sf_mode)
-            else:
-                self.current_soundfile = sf.SoundFile(output_path, self.sf_mode, 24000, 1, 'PCM_16')
-            for progress_info in generate_long(
-                    self.pipeline,
-                    text,
-                    self.current_soundfile,
-                    output_path, 
-                    voice,
-                    self.start_time,
-                    self.start_chunk_idx,
-                    self.sf_mode,
-                    round(self.threshold_var.get(), 2),  # Pass threshold from UI slider
-                    int(self.margin_var.get() * 24)  # Convert ms to samples (24000 Hz = 24 samples per ms)
-            ):
-                # Check if abort was requested
-                if self.abort_conversion.is_set():
-                    print("Conversion aborted by user")
-                    # Cleanup with the appropriate lockfile setting
-                    self._cleanup_on_exit()
-                    return False
-
-                self.current_chunk_idx = progress_info['processed_chunks'] - 1
-                self.root.after(0, lambda msg=progress_info['progress_msg']: self.status_var.set(msg))
-                self.root.after(0, lambda msg=progress_info['timer_msg']: self.timer_var.set(msg))
-                self.root.after(0, lambda value=(progress_info['processed_chunks']/progress_info['total_chunks']): self.progress.configure(value=value))
-                self.root.update()
-            
-            # Update UI for successful completion
-            self.root.after(0, self._finish_conversion_ui, output_path)
-            return True
-            
-        except Exception as e:
-            # Only create lockfile if we want to create one
-            self.was_error_or_force_quit = True
-            self._cleanup_on_exit()
-                                        
-            # Update UI for error
-            traceback.print_exc()
-            self.root.after(0, self._error_conversion_ui, str(e))
-
-    def _process_queue_worker(self):
-        """Worker function to process queue items in background"""
-        try:
-            print("Starting queue processing...")
-            
-            # Update UI for queue processing start
-            self.root.after(0, self._start_conversion_ui)
-            
-            # Process each item in the queue
-            for i, queue_item in enumerate(self.queue_items):
+                # Concatenate all audio chunks
+                full_audio = np.concatenate(audio_chunks)
                 
-                self.current_queue_index = i
-                input_path = queue_item['input_file']
-                output_path = queue_item['output_file']
+                # Create a temporary file
+                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
+                    temp_path = temp_file.name
+                    
+                # Save audio to temporary file
+                sf.write(temp_path, full_audio, 24000)
                 
-                # Update queue item status to processing
-                queue_item['status'] = '⚙️ Processing'
-                self.root.after(0, lambda idx=i, status='⚙️ Processing': self._update_queue_item_status(idx, status))
+                # Play the audio file
+                wave_obj = sa.WaveObject.from_wave_file(temp_path)
+                play_obj = wave_obj.play()
+                play_obj.wait_done()
                 
-                print(f"Processing queue item {i+1}/{len(self.queue_items)}: {input_path}")
+                # Clean up temporary file
+                os.unlink(temp_path)
                 
-                # Set up for this queue item (always start fresh)
-                self.input_path_var.set(input_path)
-                self.output_path_var.set(output_path)
-                self.sf_mode = 'w'
-                self.start_chunk_idx = 0
-                self._pull_resume_info()
+                # Update status
+                self.root.after(0, lambda: self.status_var.set("Sample playback complete."))
                 
-                # Process this item using the existing convert worker
-                try:
-                    result = self._convert_worker(input_path, output_path)
-                    if result:
-                        # If we get here without exception, the item completed successfully
-                        queue_item['status'] = '✅ Completed'
-                        self.root.after(0, lambda idx=i, status='✅ Completed': self._update_queue_item_status(idx, status))
-                    else:
-                        queue_item['status'] = '⏸️ Paused'
-                        self.root.after(0, lambda idx=i, status='⏸️ Paused': self._update_queue_item_status(idx, status))
-                        print(f"Queue item {i+1} paused")
-                        break
-                except Exception as e:
-                    # Update queue item status to failed
-                    queue_item['status'] = '❌ Failed'
-                    self.root.after(0, lambda idx=i, status='❌ Failed': self._update_queue_item_status(idx, status))
-                    print(f"Queue item {i+1} failed")
-                    # Stop processing on failure
-                    break
-                
-                if self.abort_conversion.is_set():
-                    print("Queue processing aborted by user")
-                    self.abort_conversion.clear()
-                    break
-                
-            # Update UI for queue completion
-            self.root.after(0, self._finish_queue_processing_ui)
-            
-        except Exception as e:
-            # Ensure cleanup happens
-            self._cleanup_on_exit()
-            traceback.print_exc()
-            self.root.after(0, self._error_conversion_ui, str(e))
+            except Exception as e:
+                print(f"Error playing sample: {e}")
+                self.root.after(0, lambda: self.status_var.set("Error playing sample."))
+                self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to play sample:\n{str(e)}"))
+        
+        threading.Thread(target=generate_and_play, daemon=True).start()
+        
+    
 
     def _update_queue_item_status(self, index, status):
         """Update the status of a queue item in the treeview"""
@@ -728,8 +741,8 @@ class TextToSpeechApp:
 
     def _finish_queue_processing_ui(self):
         """Update UI when queue processing finishes"""
-        self.conversion_in_progress = False
-        if self.was_error_or_force_quit:
+        self.app_state.set_state(AppState.IDLE)
+        if self.app_state.should_create_lockfile:
             self.current_queue_index = -1
         
         # Calculate total time
@@ -740,20 +753,31 @@ class TextToSpeechApp:
         else:
             total_time_str = ""
             
-        self._set_ui_state(enabled=True)
+        self._update_ui_state()
         self.status_var.set("Queue processing completed!")
         self.timer_var.set(total_time_str)
         messagebox.showinfo("Success", "Queue processing completed!")
 
     def _wait_for_worker(self):
-        while self.convert_worker_thread is not None and self.convert_worker_thread.is_alive():
+        """Wait for worker thread to finish only if it should stop"""
+        while (self.convert_worker_thread is not None and 
+               self.convert_worker_thread.is_alive() and 
+               self.app_state.is_aborted):
             print("Waiting for worker thread to exit safely...")
             time.sleep(0.1)
+        
+        # Reset app state to IDLE after worker has finished or when not aborted
+        if self.app_state.is_aborted:
+            print("Worker finished, resetting app state to IDLE")
+            self.app_state.set_state(AppState.IDLE)
                         
-    def _set_ui_state(self, enabled=True):
-        """Set UI elements state (enabled or disabled)"""
+    def _update_ui_state(self, output_path=None, error_msg=None):
+        """Unified UI state management function that dispatches based on app state"""
+        current_state = self.app_state.state
+        
+        # Set basic UI elements state based on current app state
         self.progress.configure(value=0)
-        if enabled:
+        if not self.app_state.is_active:
             self.progress.pack_forget()
             self.input_entry.config(state="readonly")  # Keep input read-only
             self.browse_input_btn.config(state="normal")
@@ -780,58 +804,67 @@ class TextToSpeechApp:
             self.clear_queue_btn.config(state="disabled")
             self.delete_selected_btn.config(state="disabled")
         
+        # Dispatch based on current state
+        if current_state == AppState.PROCESSING:
+            self.status_var.set("Converting text to speech...")
+            self.timer_var.set("")  # Clear timer display
+            
+        elif current_state == AppState.IDLE:
+            # Calculate total time if we have a start time
+            if self.start_time is not None:
+                total_time = time.time() - self.start_time
+                total_mins, total_secs = divmod(int(total_time), 60)
+                total_time_str = f"Total time: {total_mins:02d}:{total_secs:02d}"
+            else:
+                total_time_str = ""
+                
+            self.status_var.set("Conversion completed successfully!")
+            self.timer_var.set(total_time_str)
+            if output_path:
+                messagebox.showinfo("Success", f"Audio file created successfully:\n{output_path}")
+                
+        elif current_state == AppState.ERROR:
+            self.status_var.set("Conversion failed")
+            self.timer_var.set("")  # Clear timer display
+            if error_msg:
+                messagebox.showerror("Error", f"Conversion failed:\n{error_msg}")
+            else:
+                messagebox.showinfo("Paused", "Conversion has been paused.")
+                
+        elif current_state == AppState.STOP:
+            self.status_var.set("Conversion ended")
+            self.timer_var.set("")
+            messagebox.showinfo("Stopped", "Conversion has been ended.")
+
     def _start_conversion_ui(self):
         """Update UI when conversion starts"""
-        self.conversion_in_progress = True
-        self.was_error_or_force_quit = True  # Default to creating lockfile
-        self._set_ui_state(enabled=False)
-        self.status_var.set("Converting text to speech...")
-        self.timer_var.set("")  # Clear timer display
+        # State is already set in convert_to_speech method
+        self._update_ui_state()
         
     def _finish_conversion_ui(self, output_path):
         """Update UI when conversion finishes successfully"""
-        self.conversion_in_progress = False
-        # Calculate total time
-        if self.start_time is not None:
-            total_time = time.time() - self.start_time
-            total_mins, total_secs = divmod(int(total_time), 60)
-            total_time_str = f"Total time: {total_mins:02d}:{total_secs:02d}"
-        else:
-            total_time_str = ""
-            
-        self._set_ui_state(enabled=True)
-        self.status_var.set("Conversion completed successfully!")
-        self.timer_var.set(total_time_str)
-        messagebox.showinfo("Success", f"Audio file created successfully:\n{output_path}")
+        self.app_state.set_state(AppState.IDLE)
+        self._update_ui_state(output_path=output_path)
         
     def _error_conversion_ui(self, error_msg):
         """Update UI when conversion fails"""
-        self.conversion_in_progress = False
-        self._set_ui_state(enabled=True)
-        self.status_var.set("Conversion failed")
-        self.timer_var.set("")  # Clear timer display
-        messagebox.showerror("Error", f"Conversion failed:\n{error_msg}")
+        self.app_state.set_state(AppState.ERROR)
+        self._update_ui_state(error_msg=error_msg)
         
     def _abort_conversion_ui(self):
         """Update UI when conversion is aborted"""
-        self.conversion_in_progress = False
-        self._set_ui_state(enabled=True)
-        self.status_var.set("Conversion paused")
-        self.timer_var.set("")
-        messagebox.showinfo("Paused", "Conversion has been paused.")
-
+        self.app_state.set_state(AppState.ERROR)
+        self._update_ui_state()
+        
     def _stop_conversion_ui(self):
-        """Update UI when conversion is aborted"""
-        self.conversion_in_progress = False
-        self._set_ui_state(enabled=True)
-        self.status_var.set("Conversion ended")
-        self.timer_var.set("")
-        messagebox.showinfo("Stopped", "Conversion has been ended.")
+        """Update UI when conversion is stopped"""
+        # State is already set to STOP in stop_conversion
+        self._update_ui_state()
 
     def _on_closing(self):
         """Handle window closing event"""
         print("Application closing...")
-        if self.conversion_in_progress:
+        if self.app_state.is_active:
             # Ask for confirmation if conversion is in progress
             result = messagebox.askyesno(
                 "Conversion in Progress",
@@ -844,12 +877,9 @@ class TextToSpeechApp:
                 return  # User cancelled, don't close the window
             else:
                 # User confirmed, don't create lockfile when closing window
-                self.was_error_or_force_quit = False
-                # Cleanup without creating lockfile
-                self.abort_conversion.set()
+                self.app_state.set_state(AppState.STOP)
 
         # If no conversion in progress or user confirmed, close the application
-        self._wait_for_worker()
         self.root.destroy()
         
     class ConsoleRedirector:

@@ -1432,6 +1432,12 @@ wheels = [
 ]
 
 [[package]]
+name = "simpleaudio"
+version = "1.0.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/94/1b/4dc29653733202b68c09d9c6ca085cf67ac54859ee860647ef21ac1ff3dc/simpleaudio-1.0.4.tar.gz", hash = "sha256:691c88649243544db717e7edf6a9831df112104e1aefb5f6038a5d071e8cf41d", size = 2042564, upload-time = "2019-11-29T03:56:28.965Z" }
+
+[[package]]
 name = "six"
 version = "1.17.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1901,6 +1907,7 @@ dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pip" },
+    { name = "simpleaudio" },
     { name = "sounddevice" },
     { name = "soundfile" },
     { name = "tk" },
@@ -1914,6 +1921,7 @@ requires-dist = [
     { name = "nltk" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "pip", specifier = ">=25.2" },
+    { name = "simpleaudio", specifier = ">=1.0.4" },
     { name = "sounddevice", specifier = ">=0.5.2" },
     { name = "soundfile" },
     { name = "tk" },
