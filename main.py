@@ -835,6 +835,7 @@ class TextToSpeechApp:
         }
         
         config_file = os.path.join(self.config_dir, "settings.json")
+        print(f"Saving settings to {config_file}")
         try:
             with open(config_file, 'w') as f:
                 json.dump(settings, f, indent=2)
@@ -899,10 +900,7 @@ class TextToSpeechApp:
         
     def update_ui_with_loaded_settings(self):
         """Update UI elements with loaded settings after widget creation"""
-        # Update UI elements that depend on these settings
-        if hasattr(self, 'language_var') and self.language_var:
-            self._on_language_changed()  # This will update the voice dropdown
-            
+        self._on_language_changed()  # This will update the voice dropdown
         # Update display labels for sliders
         if hasattr(self, 'speed_var') and self.speed_var:
             self.update_speed_display(self.speed_var.get())
@@ -1506,7 +1504,7 @@ class TextToSpeechApp:
         self.voice_dropdown['values'] = filtered_voices
         
         # Set first voice as default if available
-        if filtered_voices:
+        if filtered_voices and self.voice_var.get() not in filtered_voices:
             self.voice_dropdown.set(filtered_voices[0])
             
         # Recreate pipelines with new language
