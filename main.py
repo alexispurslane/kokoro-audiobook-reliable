@@ -896,7 +896,7 @@ class TextToSpeechApp:
                 
             self.status_var.set("Conversion completed successfully!")
             self.timer_var.set(total_time_str)
-            if output_path:
+            if output_path and len(self.queue_items) == 0:
                 messagebox.showinfo("Success", f"Audio file created successfully:\n{output_path}")
                 
         elif current_state == AppState.ERROR:
