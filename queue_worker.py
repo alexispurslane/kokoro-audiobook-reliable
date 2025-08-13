@@ -45,11 +45,9 @@ class QueueWorker:
                 self.app.start_chunk_idx = 0
                 self.app._pull_resume_info()
                 
-                # Process this item using the convert worker
+                # Process this item using the app's convert worker
                 try:
-                    from convert_worker import ConvertWorker
-                    convert_worker = ConvertWorker(self.app, ui_callbacks=self.ui_callbacks)
-                    result = convert_worker.convert_file(input_path, output_path)
+                    result = self.app.convert_worker.convert_file(input_path, output_path)
                     if result:
                         # If we get here without exception, the item completed successfully
                         queue_item['status'] = '✅ Completed'

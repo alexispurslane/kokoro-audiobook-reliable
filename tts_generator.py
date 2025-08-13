@@ -6,6 +6,7 @@ import soundfile as sf
 import numpy as np
 from kokoro import KPipeline
 from text_processor import split_and_prepare_text
+import threading
 
 def trim_silence(audio_data, threshold=0.06, margin=100):
     """
@@ -73,8 +74,8 @@ def process_chunk(pipeline, chunk, voice, threshold=0.06, margin=10, speed=1.0, 
     return None
 
 
-def generate_long(pipeline, text, current_soundfile, output_path, voice='af_heart', start_time=None, start_chunk_idx=0, sf_mode='w', threshold=0.06, margin=10, speed=1.0, sample_rate=24000):
-    """Generate long-form speech with resume capability"""
+def generate_long(pipelines, text, current_soundfile, output_path, voice='af_heart', start_time=None, start_chunk_idx=0, sf_mode='w', threshold=0.06, margin=10, speed=1.0, sample_rate=24000, batch_count=1):
+    """Generate long-form speech with resume capability and parallel batch processing"""
     # Get lockfile path
     lockfile_path = output_path + ".lock"
     
@@ -89,37 +90,85 @@ def generate_long(pipeline, text, current_soundfile, output_path, voice='af_hear
         if sf_mode == 'r+':
             f.seek(0, sf.SEEK_END)
         
-        # Process chunks starting from start_chunk_idx
-        for chunk_idx in range(start_chunk_idx, len(sentence_chunks)):
-            chunk = sentence_chunks[chunk_idx]
-            processed_chunks = chunk_idx + 1
+        # Process chunks in batches using for loop and slices
+        for batch_start_idx in range(start_chunk_idx, len(sentence_chunks), batch_count):
+            # Determine the end index for this batch
+            batch_end_idx = min(batch_start_idx + batch_count, len(sentence_chunks))
+            
+            # Get chunks for this batch
+            batch_chunks = sentence_chunks[batch_start_idx:batch_end_idx]
+            
+            # Process chunks in parallel using threading
+            batch_results = [None] * len(batch_chunks)
+            threads = []
+            
+            def process_chunk_thread(i, chunk):
+                # Use the corresponding pipeline for this chunk (round-robin)
+                pipeline_idx = i % len(pipelines)
+                result = process_chunk(pipelines[pipeline_idx], chunk, voice, threshold=threshold, margin=margin, speed=speed, sample_rate=sample_rate)
+                batch_results[i] = result
+            
+            # Create and start threads for each chunk in the batch
+            for i, chunk in enumerate(batch_chunks):
+                thread = threading.Thread(target=process_chunk_thread, args=(i, chunk))
+                threads.append(thread)
+                thread.start()
+            
+            # Wait for all threads to complete
+            for thread in threads:
+                thread.join()
+            
+            # Write results to file in order
+            for i, result in enumerate(batch_results):
+                if result is not None:
+                    f.write(result)
+                    del result
+                
+                # Update progress for each chunk
+                current_chunk_idx = batch_start_idx + i
+                processed_chunks = current_chunk_idx + 1
+                
+                # Remove lockfile if this was the last chunk that previously failed
+                if current_chunk_idx >= start_chunk_idx:
+                    if os.path.exists(lockfile_path):
+                        os.remove(lockfile_path)
+
+                # Yield progress information
+                yield {
+                    'progress_msg': f"Processing chunk {processed_chunks}/{total_chunks}: {sentence_chunks[current_chunk_idx][:50]}...",
+                    'timer_msg': "",  # Timer will be updated at batch level
+                    'processed_chunks': processed_chunks,
+                    'total_chunks': total_chunks
+                }
+            
+            # After completing the entire batch, update time estimates based on batches
+            # Calculate batch progress for timing estimates
+            completed_batches = (batch_start_idx // batch_count) + 1
+            total_batches = (total_chunks + batch_count - 1) // batch_count  # Ceiling division
             elapsed_time = time.time() - start_time if start_time else 0
-            estimated_total_time = (elapsed_time / processed_chunks) * total_chunks if processed_chunks > 0 else 0
-            remaining_time = estimated_total_time - elapsed_time if processed_chunks > 0 else 0
+            estimated_total_time = (elapsed_time / completed_batches) * total_batches if completed_batches > 0 else 0
+            remaining_time = estimated_total_time - elapsed_time if completed_batches > 0 else 0
             
             # Format time for display
             elapsed_mins, elapsed_secs = divmod(int(elapsed_time), 60)
             remaining_mins, remaining_secs = divmod(int(remaining_time), 60)
             
-            progress_msg = f"Processing chunk {processed_chunks}/{total_chunks}: {chunk[:50]}..."
-            timer_msg = f"Elapsed: {elapsed_mins:02d}:{elapsed_secs:02d} | Remaining: {remaining_mins:02d}:{remaining_secs:02d}"
+            timer_msg = f"Elapsed: {elapsed_mins:02d}:{elapsed_secs:02d} | Remaining: {remaining_mins:02d}:{remaining_secs:02d} | Batch {completed_batches}/{total_batches}"
             
-            result = process_chunk(pipeline, chunk, voice, threshold=threshold, margin=margin, speed=speed, sample_rate=sample_rate)
-                
-            # Write audio chunk directly to file
-            if result is not None:
-                f.write(result)
-                del result
-                    
-            # Remove lockfile if this was the last chunk that previously failed
-            if chunk_idx >= start_chunk_idx:
-                if os.path.exists(lockfile_path):
-                    os.remove(lockfile_path)
-
-            # Yield progress information
+            # Create a string of the first 50 characters of concatenated non-pause chunks in this batch
+            batch_text = ""
+            for chunk in batch_chunks:
+                if chunk != "SENTENCE_END_PAUSE_MARKER":
+                    batch_text += chunk + " "
+            
+            batch_text_display = batch_text[:50].strip()
+            if len(batch_text) > 50:
+                batch_text_display += "..."
+            
+            # Update the last yielded progress with batch timing information
             yield {
-                'progress_msg': progress_msg,
+                'progress_msg': f"Completed batch {completed_batches}/{total_batches}: {batch_text_display}",
                 'timer_msg': timer_msg,
-                'processed_chunks': processed_chunks,
+                'processed_chunks': min(batch_end_idx, total_chunks),  # Number of chunks processed so far
                 'total_chunks': total_chunks
             }

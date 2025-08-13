@@ -16,6 +16,7 @@ A graphical user interface for the Kokoro text-to-speech system with advanced fe
 - **Pause and stop functionality** that allows you to resume later or stop without saving progress, based on the same resume capability features
 - **Real-time console output** showing detailed processing information
 - **An advanced queuing system** that allows you to queue up multiple texts to be converted to speech audio, and monitor their progress, as well as individually remove or stop them, as well as pause the queue even mid-conversion of a text and then resume right where you left off later
+- **Parallel batch processing** that uses threads to process multiple chunks simultaneously, dramatically increasing conversion speed - going from 1 to 5 batches reduced conversion time from 2 minutes 50 seconds to just 1 minute 52 seconds! Note that increasing batch size has logarithmically diminishing returns, as going from 5 to 8 batches only reduced the conversion time by another 20 seconds.
 
 ## Unique Features
 

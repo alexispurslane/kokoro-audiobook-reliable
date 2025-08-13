@@ -6,6 +6,7 @@ import threading
 from tts_generator import generate_long
 import soundfile as sf
 from pydub import AudioSegment
+from kokoro import KPipeline
 
 
 class ConvertWorker:
@@ -14,7 +15,11 @@ class ConvertWorker:
     def __init__(self, app_instance, ui_callbacks=None):
         self.app = app_instance
         self.ui_callbacks = ui_callbacks or {}
-    
+        
+        # Create our own Kokoro pipelines based on batch count
+        self.pipelines = []
+        self.recreate_pipelines()
+            
     def convert_to_mp3(self, wav_path, bitrate="192k"):
         """Convert WAV file to MP3 with specified bitrate"""
         try:
@@ -79,7 +84,7 @@ class ConvertWorker:
                 self.app.current_soundfile = sf.SoundFile(output_path, self.app.sf_mode, sample_rate, 1, 'PCM_16')
                 
             for progress_info in generate_long(
-                    self.app.pipeline,
+                    self.pipelines,  # Use our list of pipelines
                     text,
                     self.app.current_soundfile,
                     output_path, 
@@ -90,7 +95,8 @@ class ConvertWorker:
                     round(self.app.threshold_var.get(), 2),  # Pass threshold from UI slider
                     int(self.app.margin_var.get() * sample_rate / 1000),  # Convert ms to samples based on sample rate
                     speed,  # Pass speed from UI slider
-                    sample_rate  # Pass sample rate from UI spinner
+                    sample_rate,  # Pass sample rate from UI spinner
+                    len(self.pipelines)  # Pass the actual number of pipelines we have
             ):
                 # Check if abort was requested
                 if self.app.app_state.is_aborted:
@@ -132,3 +138,17 @@ class ConvertWorker:
             traceback.print_exc()
             if 'error_conversion' in self.ui_callbacks:
                 self.ui_callbacks['error_conversion'](str(e))
+                
+    def recreate_pipelines(self):
+        """Recreate pipelines based on updated batch count"""
+        # Create new pipelines based on batch count
+        batch_count = self.app.batch_count_var.get()
+        print(f"Recreating {batch_count} Kokoro pipeline(s) for ConvertWorker...")
+        self.pipelines = []
+        
+        for i in range(batch_count):
+            print(f"Loading pipeline {i+1}/{batch_count}...")
+            pipeline = KPipeline(repo_id='hexgrad/Kokoro-82M', lang_code='a')  # 'a' for American English
+            self.pipelines.append(pipeline)
+        
+        print(f"All {batch_count} Kokoro pipeline(s) recreated for ConvertWorker")

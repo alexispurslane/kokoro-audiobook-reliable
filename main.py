@@ -20,7 +20,6 @@ import tempfile
 import simpleaudio as sa
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from kokoro import KPipeline
 import threading
 import numpy as np
 import soundfile as sf
@@ -94,9 +93,12 @@ class TextToSpeechApp:
         # Make window resizeable
         self.root.resizable(True, True)
         
-        # Initialize Kokoro pipeline
-        self.pipeline = None
+        # Initialize pipeline loading state
         self.pipeline_loaded = False
+        
+        # Initialize workers (will be updated after pipeline loading)
+        self.convert_worker = None
+        self.queue_worker = None
         
         # For cleanup handling
         self.current_soundfile = None
@@ -371,6 +373,24 @@ class TextToSpeechApp:
         self.margin_spinbox.pack(side="left")
         ttk.Label(margin_frame, text="ms").pack(side="left", padx=(5, 0))
         
+        # Number of parallel batches
+        ttk.Label(settings_frame, text="Parallel Batches:").pack(anchor="w", pady=(10, 0))
+        
+        batch_frame = ttk.Frame(settings_frame)
+        batch_frame.pack(fill="x", pady=(5, 0))
+        
+        # Get the number of logical CPUs
+        import multiprocessing
+        max_batches = multiprocessing.cpu_count()
+        
+        self.batch_count_var = tk.IntVar(value=1)  # Default to 1 batch (no parallelism)
+        self.batch_count_spinbox = ttk.Spinbox(batch_frame, from_=1, to=max_batches, textvariable=self.batch_count_var, width=10)
+        self.batch_count_spinbox.pack(side="left")
+        ttk.Label(batch_frame, text=f"(1-{max_batches})").pack(side="left", padx=(5, 0))
+        
+        # Add trace to handle batch count changes
+        self.batch_count_var.trace_add('write', self._on_batch_count_changed)
+        
     def create_progress_section(self, parent):
         """Create the progress section with status label, timer, and progress bar"""
         # Progress section
@@ -619,26 +639,51 @@ class TextToSpeechApp:
                 pass
                 
     def load_pipeline(self):
-        """Load Kokoro pipeline in background"""
+        """Load Kokoro pipelines in background"""
         def load():
             try:
-                print("Loading Kokoro pipeline...")
-                self.status_var.set("Loading Kokoro pipeline...")
+                print("Initializing pipeline system...")
+                self.status_var.set("Initializing pipeline system...")
                 self.root.update()
                 
-                # Initialize pipeline with default settings
-                self.pipeline = KPipeline(repo_id='hexgrad/Kokoro-82M', lang_code='a') # 'a' for American English
+                # We no longer create pipelines in the main app
+                # Pipelines are now created in the workers
                 self.pipeline_loaded = True
-                self.status_var.set("Pipeline loaded. Ready to convert.")
-                # Enable the convert and play sample buttons now that pipeline is loaded
+                
+                # Initialize or update workers with the pipelines
+                convert_ui_callbacks = {
+                    'start_conversion': lambda: self.root.after(0, self._start_conversion_ui),
+                    'update_progress': lambda progress_msg, timer_msg, progress_value: self.root.after(0, lambda: (
+                        self.status_var.set(progress_msg),
+                        self.timer_var.set(timer_msg),
+                        self.progress.configure(value=progress_value)
+                    )),
+                    'finish_conversion': lambda output_path: self.root.after(0, lambda: self._finish_conversion_ui(output_path)),
+                    'error_conversion': lambda error_msg: self.root.after(0, lambda: self._error_conversion_ui(error_msg))
+                }
+
+                queue_ui_callbacks = {
+                    'update_queue_item_status': lambda idx, status: self.root.after(0, lambda: self._update_queue_item_status(idx, status)),
+                    'finish_queue_processing': lambda: self.root.after(0, self._finish_queue_processing_ui),
+                }
+                
+                # Import here to avoid circular imports
+                from convert_worker import ConvertWorker
+                from queue_worker import QueueWorker
+                
+                self.convert_worker = ConvertWorker(self, ui_callbacks=convert_ui_callbacks)
+                self.queue_worker = QueueWorker(self, ui_callbacks=queue_ui_callbacks | convert_ui_callbacks)
+                
+                self.status_var.set("Pipeline system initialized. Ready to convert.")
+                # Enable the convert and play sample buttons now that pipeline system is initialized
                 self.convert_btn.config(state="normal")
                 self.play_sample_btn.config(state="normal")
             except Exception as e:
-                self.status_var.set(f"Error loading pipeline: {str(e)}")
-                messagebox.showerror("Error", f"Failed to load Kokoro pipeline:\n{str(e)}")
+                self.status_var.set(f"Error initializing pipeline system: {str(e)}")
+                messagebox.showerror("Error", f"Failed to initialize pipeline system:\n{str(e)}")
                 
         threading.Thread(target=load, daemon=True).start()
-
+        
     def convert_to_speech(self):
         """Convert text file to speech"""
         print("Starting conversion process...")
@@ -647,23 +692,6 @@ class TextToSpeechApp:
             return
 
         self._pull_resume_info()
-
-        convert_ui_callbacks = {
-            'start_conversion': lambda: self.root.after(0, self._start_conversion_ui),
-            'update_progress': lambda progress_msg, timer_msg, progress_value: self.root.after(0, lambda: (
-                self.status_var.set(progress_msg),
-                self.timer_var.set(timer_msg),
-                self.progress.configure(value=progress_value)
-            )),
-            'finish_conversion': lambda output_path: self.root.after(0, lambda: self._finish_conversion_ui(output_path)),
-            'error_conversion': lambda error_msg: self.root.after(0, lambda: self._error_conversion_ui(error_msg))
-        }
-
-        
-        queue_ui_callbacks = {
-            'update_queue_item_status': lambda idx, status: self.root.after(0, lambda: self._update_queue_item_status(idx, status)),
-            'finish_queue_processing': lambda: self.root.after(0, self._finish_queue_processing_ui),
-        }
         
         # Check if queue has items
         if self.queue_items:
@@ -671,8 +699,7 @@ class TextToSpeechApp:
             self.app_state.set_state(AppState.PROCESSING)
             self.current_queue_index = 0
             
-            queue_worker = QueueWorker(self, ui_callbacks=queue_ui_callbacks | convert_ui_callbacks)
-            self.convert_worker_thread = threading.Thread(target=queue_worker.process_queue, daemon=True)
+            self.convert_worker_thread = threading.Thread(target=self.queue_worker.process_queue, daemon=True)
             self.convert_worker_thread.start()
         else:
             # Process single file (original behavior)
@@ -695,8 +722,7 @@ class TextToSpeechApp:
             # Start conversion in background thread
             self.app_state.set_state(AppState.PROCESSING)
             
-            convert_worker = ConvertWorker(self, ui_callbacks=convert_ui_callbacks)
-            self.convert_worker_thread = threading.Thread(target=convert_worker.convert_file, args=(input_path, output_path), daemon=True)
+            self.convert_worker_thread = threading.Thread(target=self.convert_worker.convert_file, args=(input_path, output_path), daemon=True)
             self.convert_worker_thread.start()
         
     def abort_conversion_process(self):
@@ -735,7 +761,7 @@ class TextToSpeechApp:
         
     def play_sample(self):
         """Play a sample of text with the selected voice"""
-        if not self.pipeline_loaded:
+        if not self.pipeline_loaded and (not self.convert_worker or not hasattr(self.convert_worker, 'pipelines') or not self.convert_worker.pipelines):
             messagebox.showwarning("Warning", "Pipeline is still loading. Please wait.")
             return
         
@@ -753,8 +779,17 @@ class TextToSpeechApp:
         # Generate audio in a separate thread to avoid blocking UI
         def generate_and_play():
             try:
-                # Generate audio using the pipeline
-                audio_generator = self.pipeline(
+                # Generate audio using the first available pipeline
+                if self.pipeline_loaded and hasattr(self, 'pipelines') and self.pipelines:
+                    # Use the main app's pipeline if available
+                    pipeline = self.pipelines[0]
+                elif self.convert_worker and hasattr(self.convert_worker, 'pipelines') and self.convert_worker.pipelines:
+                    # Use the worker's pipeline if main pipeline isn't available
+                    pipeline = self.convert_worker.pipelines[0]
+                else:
+                    raise ValueError("No pipeline available")
+                    
+                audio_generator = pipeline(
                     sample_text,
                     voice=voice,
                     speed=speed
@@ -796,9 +831,10 @@ class TextToSpeechApp:
                 self.root.after(0, lambda: self.status_var.set("Sample playback complete."))
                 
             except Exception as e:
-                print(f"Error playing sample: {e}")
+                error_msg = str(e)
+                print(f"Error playing sample: {error_msg}")
                 self.root.after(0, lambda: self.status_var.set("Error playing sample."))
-                self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to play sample:\n{str(e)}"))
+                self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to play sample:\n{error_msg}"))
         
         threading.Thread(target=generate_and_play, daemon=True).start()
         
@@ -999,6 +1035,11 @@ class TextToSpeechApp:
             else:
                 new_output = base_name + ".wav"
             self.output_path_var.set(new_output)
+            
+    def _on_batch_count_changed(self, *args):
+        """Handle batch count changes to recreate pipelines in the worker"""
+        if self.pipeline_loaded and self.convert_worker:
+            self.convert_worker.recreate_pipelines()
 
 def main():
     root = tk.Tk()
