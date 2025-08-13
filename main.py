@@ -29,6 +29,72 @@ from typing import Optional
 from tts_generator import process_chunk, generate_long
 from queue_worker import QueueWorker
 from convert_worker import ConvertWorker
+
+
+class ToolTip:
+    """A tooltip class for tkinter widgets based on the GeeksforGeeks approach"""
+    
+    def __init__(self, widget, text, delay=1000):
+        self.widget = widget
+        self.text = text
+        self.delay = delay
+        self.tooltip_window = None
+        self.id = None
+        self.x = self.y = 0
+        
+        # Bind events
+        self.widget.bind("<Enter>", self.on_enter, add="+")
+        self.widget.bind("<Leave>", self.on_leave, add="+")
+        self.widget.bind("<ButtonPress>", self.on_leave, add="+")
+        
+    def on_enter(self, event=None):
+        """Handle mouse enter event"""
+        self.schedule()
+        
+    def on_leave(self, event=None):
+        """Handle mouse leave event"""
+        self.unschedule()
+        self.hide_tooltip()
+        
+    def schedule(self):
+        """Schedule tooltip to appear after delay"""
+        self.unschedule()
+        self.id = self.widget.after(self.delay, self.show_tooltip)
+        
+    def unschedule(self):
+        """Cancel scheduled tooltip"""
+        if self.id:
+            self.widget.after_cancel(self.id)
+            self.id = None
+            
+    def show_tooltip(self):
+        """Display the tooltip"""
+        # Don't show tooltip if there's no text
+        if not self.text:
+            return
+            
+        # Get mouse position
+        x, y = self.widget.winfo_pointerxy()
+        
+        # Create tooltip window
+        self.tooltip_window = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        
+        # Position tooltip near mouse cursor
+        tw.wm_geometry(f"+{x + 10}+{y + 10}")
+        
+        # Create tooltip label
+        label = tk.Label(
+            tw, 
+            text=self.text,
+        )
+        label.pack(ipadx=1)
+        
+    def hide_tooltip(self):
+        """Hide the tooltip"""
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+            self.tooltip_window = None
     
 class AppState:
     """Atomic application state manager with automatic worker waiting"""
@@ -184,9 +250,11 @@ class TextToSpeechApp:
         self.input_path_var = tk.StringVar()
         self.input_entry = ttk.Entry(input_row_frame, textvariable=self.input_path_var, state="readonly")
         self.input_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        ToolTip(self.input_entry, "The text file to convert to speech. Must be a plain text file. The file will be processed in sentence chunks for long-form reliability.")
         
         self.browse_input_btn = ttk.Button(input_row_frame, text="Browse", command=self.browse_input_file)
         self.browse_input_btn.pack(side="left")
+        ToolTip(self.browse_input_btn, "Select a text file to convert to speech.")
         
         # Output file section
         output_frame = ttk.Frame(file_frame)
@@ -201,9 +269,11 @@ class TextToSpeechApp:
         self.output_path_var = tk.StringVar()
         self.output_entry = ttk.Entry(output_row_frame, textvariable=self.output_path_var)
         self.output_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        ToolTip(self.output_entry, "The output audio file. Will be created in WAV or MP3 format. For MP3 output, an intermediate WAV file is first created to enable partial output and resuming.")
         
         self.browse_output_btn = ttk.Button(output_row_frame, text="Browse", command=self.browse_output_file)
         self.browse_output_btn.pack(side="left")
+        ToolTip(self.browse_output_btn, "Select where to save the output audio file.")
         
     def create_queue_section(self, parent):
         """Create the queue section with table view and control buttons"""
@@ -217,12 +287,15 @@ class TextToSpeechApp:
         
         self.add_to_queue_btn = ttk.Button(queue_control_frame, text="Add to Queue", command=self.add_to_queue)
         self.add_to_queue_btn.pack(side="left", padx=(0, 5))
+        ToolTip(self.add_to_queue_btn, "Add the current input/output file pair to the conversion queue. Items will be processed sequentially, one at a time.")
         
         self.clear_queue_btn = ttk.Button(queue_control_frame, text="Clear Queue", command=self.clear_queue)
         self.clear_queue_btn.pack(side="left", padx=(0, 5))
+        ToolTip(self.clear_queue_btn, "Remove all items from the conversion queue.")
         
         self.delete_selected_btn = ttk.Button(queue_control_frame, text="Delete Selected", command=self.delete_selected_queue_item)
         self.delete_selected_btn.pack(side="left")
+        ToolTip(self.delete_selected_btn, "Remove the selected item from the conversion queue.")
         
         # Queue table
         queue_table_container = ttk.Frame(queue_frame)
@@ -246,6 +319,8 @@ class TextToSpeechApp:
         self.queue_tree.configure(yscrollcommand=queue_scrollbar.set)
         
         self.queue_tree.pack(side="left", fill="both", expand=True)
+        ToolTip(self.queue_tree, "Queue of files to be converted. Shows input file, output file, and conversion status. Processing happens sequentially with automatic resuming on failure.")
+        
         queue_scrollbar.pack(side="right", fill="y")
         
     def create_voice_settings_section(self, parent):
@@ -366,6 +441,7 @@ class TextToSpeechApp:
         self.language_dropdown = ttk.Combobox(language_frame, textvariable=self.language_var, values=languages, state="readonly", width=30)
         self.language_dropdown.pack(side="left", padx=(0, 5))
         self.language_dropdown.set("American English")  # Set default value
+        ToolTip(self.language_dropdown, "Select the language for the voice. This will filter the available voices.")
         
         # Bind language change event
         self.language_var.trace_add('write', self._on_language_changed)
@@ -381,10 +457,12 @@ class TextToSpeechApp:
         self.voice_dropdown = ttk.Combobox(voice_control_frame, textvariable=self.voice_var, values=voices_with_grades, state="readonly", width=30)
         self.voice_dropdown.pack(side="left", padx=(0, 5))
         self.voice_dropdown.set("af_heart (A)")  # Set default value
+        ToolTip(self.voice_dropdown, "Select a voice for the text-to-speech conversion. Voices are rated by quality (A is best). The Kokoro-82M model generates high-quality speech using neural networks.")
         
         # Play Sample button (disabled initially until pipeline loads)
         self.play_sample_btn = ttk.Button(voice_control_frame, text="Play Sample", command=self.play_sample, state="disabled")
         self.play_sample_btn.pack(side="left")
+        ToolTip(self.play_sample_btn, "Play a sample of the selected voice with current settings. Uses the Kokoro pipeline to generate and play a short test phrase.")
         
         # Voice speed slider
         ttk.Label(voice_frame, text="Voice Speed:").pack(anchor="w", pady=(10, 0))
@@ -395,6 +473,7 @@ class TextToSpeechApp:
         self.speed_var = tk.DoubleVar(value=1.0)  # Default speed (1.0 = normal)
         self.speed_slider = ttk.Scale(speed_container, from_=0.5, to=2.0, variable=self.speed_var, orient="horizontal")
         self.speed_slider.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        ToolTip(self.speed_slider, "Adjust the speed of the voice. 1.0 is normal speed, lower is slower, higher is faster. Speed is controlled directly by the Kokoro model for natural prosody.")
         
         self.speed_value_label = ttk.Label(speed_container, text=f"{self.speed_var.get():.1f}x")
         self.speed_value_label.pack(side="left")
@@ -411,6 +490,8 @@ class TextToSpeechApp:
         self.sample_rate_var = tk.IntVar(value=24000)  # Default sample rate
         self.sample_rate_spinbox = ttk.Spinbox(sample_rate_frame, from_=8000, to=48000, increment=1000, textvariable=self.sample_rate_var, width=10)
         self.sample_rate_spinbox.pack(side="left")
+        ToolTip(self.sample_rate_spinbox, "Set the audio sample rate in Hertz. Higher values provide better quality but larger files. Audio is resampled from Kokoro's native 24kHz using torchaudio.")
+        
         ttk.Label(sample_rate_frame, text="Hz").pack(side="left", padx=(5, 0))
         
     def create_audio_processing_settings_section(self, parent):
@@ -429,6 +510,7 @@ class TextToSpeechApp:
         # Create a scale with 0.02 increments
         self.threshold_slider = ttk.Scale(threshold_container, from_=0, to=0.5, variable=self.threshold_var, orient="horizontal")
         self.threshold_slider.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        ToolTip(self.threshold_slider, "Set the sensitivity for detecting silence. Lower values trim more aggressively. Applied to each audio chunk during generation to reduce awkward pauses. Chunks are calculated by splitting text into sentences and long sentences into sub-chunks.")
         
         self.threshold_value_label = ttk.Label(threshold_container, text=f"{self.threshold_var.get():.2f}")
         self.threshold_value_label.pack(side="left")
@@ -445,6 +527,8 @@ class TextToSpeechApp:
         self.margin_var = tk.IntVar(value=25)  # Default margin value in ms
         self.margin_spinbox = ttk.Spinbox(margin_frame, from_=0, to=500, textvariable=self.margin_var, width=10)
         self.margin_spinbox.pack(side="left")
+        ToolTip(self.margin_spinbox, "Extra time in milliseconds to keep before and after detected sound. Converted to samples based on current sample rate and applied during silence trimming of each audio chunk.")
+        
         ttk.Label(margin_frame, text="ms").pack(side="left", padx=(5, 0))
         
         # Number of parallel batches
@@ -460,6 +544,8 @@ class TextToSpeechApp:
         self.batch_count_var = tk.IntVar(value=1)  # Default to 1 batch (no parallelism)
         self.batch_count_spinbox = ttk.Spinbox(batch_frame, from_=1, to=max_batches, textvariable=self.batch_count_var, width=10)
         self.batch_count_spinbox.pack(side="left")
+        ToolTip(self.batch_count_spinbox, "Number of text chunks to process simultaneously. More batches = faster conversion but higher CPU usage. Each batch uses its own Kokoro pipeline instance.")
+        
         ttk.Label(batch_frame, text=f"(1-{max_batches})").pack(side="left", padx=(5, 0))
         
         # Add trace to handle batch count changes
@@ -474,6 +560,7 @@ class TextToSpeechApp:
         self.convert_to_mp3_var = tk.BooleanVar(value=False)
         self.mp3_checkbox = ttk.Checkbutton(mp3_frame, text="Convert to MP3", variable=self.convert_to_mp3_var)
         self.mp3_checkbox.pack(side="left", padx=(0, 10))
+        ToolTip(self.mp3_checkbox, "Convert the output to MP3 format instead of WAV. An intermediate WAV file is first created to allow partial output and resuming, then converted to MP3 using pydub.")
         
         ttk.Label(mp3_frame, text="Bitrate:").pack(side="left", padx=(0, 5))
         
@@ -481,6 +568,8 @@ class TextToSpeechApp:
         mp3_bitrates = ["64k", "96k", "128k", "192k", "256k", "320k"]
         self.mp3_bitrate_combo = ttk.Combobox(mp3_frame, textvariable=self.mp3_bitrate_var, values=mp3_bitrates, state="readonly", width=8)
         self.mp3_bitrate_combo.pack(side="left")
+        ToolTip(self.mp3_bitrate_combo, "Select the MP3 bitrate. Higher bitrates provide better quality but larger files. The WAV file is converted to MP3 using pydub's AudioSegment.export method.")
+        
         self.mp3_bitrate_combo.set("192k")  # Set default value
         
         # Add callback to update output file extension when MP3 checkbox is toggled
@@ -496,15 +585,18 @@ class TextToSpeechApp:
         self.status_var = tk.StringVar(value="Ready to convert")
         self.status_label = ttk.Label(progress_frame, textvariable=self.status_var)
         self.status_label.pack(anchor="w")
+        ToolTip(self.status_label, "Current status of the conversion process. Shows progress through text chunks and batch processing steps.")
         
         # Timer label
         self.timer_var = tk.StringVar(value="")
         self.timer_label = ttk.Label(progress_frame, textvariable=self.timer_var)
         self.timer_label.pack(anchor="w", pady=(5, 0))
+        ToolTip(self.timer_label, "Time elapsed and estimated time remaining for the current conversion.")
         
         # Progress bar
         self.progress = ttk.Progressbar(progress_frame, mode='determinate', maximum=1)
         self.progress.pack(fill="x", pady=(10, 0))
+        ToolTip(self.progress, "Progress of the current conversion. Updates after each batch of text chunks is processed. Batches contain multiple chunks processed in parallel.")
         self.progress.pack_forget()  # Hide initially
         
     def create_control_buttons_section(self, parent):
@@ -520,10 +612,12 @@ class TextToSpeechApp:
         # Convert button (disabled initially until pipeline loads)
         self.convert_btn = ttk.Button(button_container, text="Convert to Speech", command=self.convert_to_speech, state="disabled")
         self.convert_btn.pack(side="left", padx=(0, 5))
+        ToolTip(self.convert_btn, "Start converting the text to speech with current settings.")
         
         # Stop button (initially disabled)
         self.stop_btn = ttk.Button(button_container, text="Stop", command=self.stop_conversion, state="disabled")
         self.stop_btn.pack(side="left")
+        ToolTip(self.stop_btn, "Stop the current conversion process.")
         
     def create_console_output_section(self, parent):
         """Create the console output section with text area and scrollbar"""
@@ -539,6 +633,8 @@ class TextToSpeechApp:
         self.console_text.configure(yscrollcommand=console_scrollbar.set)
         
         self.console_text.pack(side="left", fill="both", expand=True)
+        ToolTip(self.console_text, "Detailed output and logs from the conversion process. Shows pipeline initialization, chunk processing progress, timing estimates, and any errors or warnings.")
+        
         console_scrollbar.pack(side="right", fill="y")
         
     def browse_input_file(self):
@@ -751,18 +847,27 @@ class TextToSpeechApp:
                 self.status_var.set("Initializing pipeline system...")
                 self.root.update()
                 
+                # Show progress bar for pipeline loading
+                self.progress.pack(fill="x", pady=(10, 0))
+                self.progress.configure(mode='determinate', maximum=100, value=0)
+                self.root.update()  # Force UI update
+                
                 # We no longer create pipelines in the main app
                 # Pipelines are now created in the workers
                 self.pipeline_loaded = True
                 
                 # Initialize or update workers with the pipelines
+                def update_progress(progress_msg=None, timer_msg=None, progress_value=None):
+                    """Unified progress update function for both pipeline loading and conversion"""
+                    self.root.after(0, lambda: (
+                        self.status_var.set(progress_msg) if progress_msg is not None else None,
+                        self.timer_var.set(timer_msg) if timer_msg is not None else None,
+                        self.progress.configure(value=progress_value * 100) if progress_value is not None else None
+                    ))
+                
                 convert_ui_callbacks = {
                     'start_conversion': lambda: self.root.after(0, self._start_conversion_ui),
-                    'update_progress': lambda progress_msg, timer_msg, progress_value: self.root.after(0, lambda: (
-                        self.status_var.set(progress_msg),
-                        self.timer_var.set(timer_msg),
-                        self.progress.configure(value=progress_value)
-                    )),
+                    'update_progress': update_progress,
                     'finish_conversion': lambda output_path: self.root.after(0, lambda: self._finish_conversion_ui(output_path)),
                     'error_conversion': lambda error_msg: self.root.after(0, lambda: self._error_conversion_ui(error_msg))
                 }
@@ -780,11 +885,15 @@ class TextToSpeechApp:
                 self.queue_worker = QueueWorker(self, ui_callbacks=queue_ui_callbacks | convert_ui_callbacks)
                 
                 self.status_var.set("Pipeline system initialized. Ready to convert.")
+                # Hide progress bar when done loading
+                self.progress.pack_forget()
                 # Enable the convert and play sample buttons now that pipeline system is initialized
                 self.convert_btn.config(state="normal")
                 self.play_sample_btn.config(state="normal")
             except Exception as e:
                 self.status_var.set(f"Error initializing pipeline system: {str(e)}")
+                # Hide progress bar on error
+                self.progress.pack_forget()
                 messagebox.showerror("Error", f"Failed to initialize pipeline system:\n{str(e)}")
                 
         threading.Thread(target=load, daemon=True).start()

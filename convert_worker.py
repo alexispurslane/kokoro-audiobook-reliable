@@ -18,6 +18,7 @@ class ConvertWorker:
         
         # Create our own Kokoro pipelines based on batch count
         self.pipelines = []
+
         self.recreate_pipelines()
             
     def convert_to_mp3(self, wav_path, bitrate="192k"):
@@ -146,6 +147,10 @@ class ConvertWorker:
         
         for i in range(batch_count):
             print(f"Loading pipeline {i+1}/{batch_count}...")
+            # Report progress to UI
+            if 'update_progress' in self.ui_callbacks:
+                progress_msg = f"Loading pipeline {i+1}/{batch_count}..."
+                self.ui_callbacks['update_progress'](progress_msg=progress_msg, progress_value=(i + 1) / batch_count)
             pipeline = KPipeline(repo_id='hexgrad/Kokoro-82M', lang_code=lang_code)
             self.pipelines.append(pipeline)
         
