@@ -1,10 +1,7 @@
 import os
 import time
-import json
-import torch
 import soundfile as sf
 import numpy as np
-from kokoro import KPipeline
 from text_processor import split_and_prepare_text
 import threading
 
@@ -31,6 +28,9 @@ def trim_silence(audio_data, threshold=0.06, margin=100):
 
 def process_chunk(pipeline, chunk, voice, threshold=0.06, margin=10, speed=1.0, sample_rate=24000):
     """Process a single chunk and return the audio tensor or a pause marker"""
+    # Import torch here to avoid slowing down app startup
+    import torch
+    
     # Check if this is a pause marker
     if chunk == "SENTENCE_END_PAUSE_MARKER":
         # Create a pause instead of audio

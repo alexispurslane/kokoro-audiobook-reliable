@@ -6,8 +6,6 @@ import threading
 from tts_generator import generate_long
 import soundfile as sf
 from pydub import AudioSegment
-from kokoro import KPipeline
-
 
 class ConvertWorker:
     """Handles conversion of a single text file to speech"""
@@ -140,6 +138,9 @@ class ConvertWorker:
                 
     def recreate_pipelines(self, lang_code='a'):
         """Recreate pipelines based on updated batch count and language"""
+        # Import KPipeline here to avoid slowing down app startup
+        from kokoro import KPipeline
+        
         # Create new pipelines based on batch count
         batch_count = self.app.batch_count_var.get()
         print(f"Recreating {batch_count} Kokoro pipeline(s) for ConvertWorker with language code '{lang_code}'...")

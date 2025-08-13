@@ -30,7 +30,6 @@ from tts_generator import process_chunk, generate_long
 from queue_worker import QueueWorker
 from convert_worker import ConvertWorker
 
-
 class ToolTip:
     """A tooltip class for tkinter widgets based on the GeeksforGeeks approach"""
     
@@ -150,6 +149,7 @@ class AppState:
         """True if state represents an aborted process"""
         return self._state in (self.ERROR, self.STOP)
 
+
 class TextToSpeechApp:
     def __init__(self, root):
         self.root = root
@@ -164,8 +164,8 @@ class TextToSpeechApp:
         self.pipeline_loaded = False
         
         # Initialize workers (will be updated after pipeline loading)
-        self.convert_worker: Optional[ConvertWorker] = None
-        self.queue_worker: Optional[QueueWorker] = None
+        self.convert_worker = None
+        self.queue_worker = None
         
         # For cleanup handling
         self.current_soundfile = None
@@ -192,6 +192,8 @@ class TextToSpeechApp:
         
         # Create UI elements
         self.create_widgets()
+        self.root.update()
+        self.root.lift()
         
         # No initialization needed for playsound
         
