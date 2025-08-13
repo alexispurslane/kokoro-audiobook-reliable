@@ -78,6 +78,7 @@ def generate_long(pipelines, text, current_soundfile, output_path, voice='af_hea
     """Generate long-form speech with resume capability and parallel batch processing"""
     # Get lockfile path
     lockfile_path = output_path + ".lock"
+    print(f"Batch count: {batch_count}")
     
     # Set initial state
     sentence_chunks = split_and_prepare_text(text)
@@ -124,23 +125,11 @@ def generate_long(pipelines, text, current_soundfile, output_path, voice='af_hea
                     f.write(result)
                     del result
                 
-                # Update progress for each chunk
-                current_chunk_idx = batch_start_idx + i
-                processed_chunks = current_chunk_idx + 1
-                
                 # Remove lockfile if this was the last chunk that previously failed
-                if current_chunk_idx >= start_chunk_idx:
+                if batch_start_idx + i >= start_chunk_idx:
                     if os.path.exists(lockfile_path):
                         os.remove(lockfile_path)
 
-                # Yield progress information
-                yield {
-                    'progress_msg': f"Processing chunk {processed_chunks}/{total_chunks}: {sentence_chunks[current_chunk_idx][:50]}...",
-                    'timer_msg': "",  # Timer will be updated at batch level
-                    'processed_chunks': processed_chunks,
-                    'total_chunks': total_chunks
-                }
-            
             # After completing the entire batch, update time estimates based on batches
             # Calculate batch progress for timing estimates
             completed_batches = (batch_start_idx // batch_count) + 1
@@ -157,6 +146,7 @@ def generate_long(pipelines, text, current_soundfile, output_path, voice='af_hea
             
             # Create a string of the first 50 characters of concatenated non-pause chunks in this batch
             batch_text = ""
+
             for chunk in batch_chunks:
                 if chunk != "SENTENCE_END_PAUSE_MARKER":
                     batch_text += chunk + " "
