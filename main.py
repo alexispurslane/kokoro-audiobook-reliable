@@ -23,6 +23,7 @@ from tkinter import filedialog, messagebox, ttk
 import threading
 import numpy as np
 import soundfile as sf
+from typing import Optional
 
 # Import our new modules
 from tts_generator import process_chunk, generate_long
@@ -97,8 +98,8 @@ class TextToSpeechApp:
         self.pipeline_loaded = False
         
         # Initialize workers (will be updated after pipeline loading)
-        self.convert_worker = None
-        self.queue_worker = None
+        self.convert_worker: Optional[ConvertWorker] = None
+        self.queue_worker: Optional[QueueWorker] = None
         
         # For cleanup handling
         self.current_soundfile = None
@@ -143,8 +144,19 @@ class TextToSpeechApp:
         # Create each section using dedicated functions
         self.create_file_settings_section(main_container)
         self.create_queue_section(main_container)
-        self.create_voice_settings_section(main_container)
-        self.create_audio_processing_settings_section(main_container)
+        
+        # Create a frame to hold voice settings and audio processing side by side
+        settings_container = ttk.Frame(main_container)
+        settings_container.pack(fill="x", pady=(0, 10))
+        
+        # Configure columns to expand equally
+        settings_container.columnconfigure(0, weight=1)
+        settings_container.columnconfigure(1, weight=1)
+        
+        # Create voice settings and audio processing sections side by side
+        self.create_voice_settings_section(settings_container)
+        self.create_audio_processing_settings_section(settings_container)
+        
         self.create_progress_section(main_container)
         self.create_control_buttons_section(main_container)
         self.create_console_output_section(main_container)
@@ -240,52 +252,135 @@ class TextToSpeechApp:
         """Create the voice settings section with voice selection dropdown"""
         # Voice selection section
         voice_frame = ttk.LabelFrame(parent, text="Voice Settings", padding="10")
-        voice_frame.pack(fill="x", pady=(0, 10))
+        voice_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
         
         # Voice selection
         ttk.Label(voice_frame, text="Voice:").pack(anchor="w")
         
         self.voice_var = tk.StringVar(value="af_heart")
         
-        # All available voices from Kokoro
-        voices = [
-            "bf_alice",
-            "bf_emma",
-            "bf_isabella",
-            "bf_lily",
-            "bm_daniel",
-            "bm_fable",
-            "bm_george",
-            "bm_lewis",
-            "af_heart",
-            "af_alloy",
-            "af_aoede",
-            "af_bella",
-            "af_jessica",
-            "af_kore",
-            "af_nicole",
-            "af_nova",
-            "af_river",
-            "af_sarah",
-            "af_sky",
-            "am_adam",
-            "am_echo",
-            "am_eric",
-            "am_fenrir",
-            "am_liam",
-            "am_michael",
-            "am_onyx",
-            "am_puck",
-            "am_santa"
+        # Voice data with grades and language codes
+        self.voice_data = {
+            # American English
+            "af_heart": {"grade": "A", "language": "American English", "lang_code": "a"},
+            "af_alloy": {"grade": "C", "language": "American English", "lang_code": "a"},
+            "af_aoede": {"grade": "C+", "language": "American English", "lang_code": "a"},
+            "af_bella": {"grade": "A-", "language": "American English", "lang_code": "a"},
+            "af_jessica": {"grade": "D", "language": "American English", "lang_code": "a"},
+            "af_kore": {"grade": "C+", "language": "American English", "lang_code": "a"},
+            "af_nicole": {"grade": "B-", "language": "American English", "lang_code": "a"},
+            "af_nova": {"grade": "C", "language": "American English", "lang_code": "a"},
+            "af_river": {"grade": "D", "language": "American English", "lang_code": "a"},
+            "af_sarah": {"grade": "C+", "language": "American English", "lang_code": "a"},
+            "af_sky": {"grade": "C-", "language": "American English", "lang_code": "a"},
+            "am_adam": {"grade": "F+", "language": "American English", "lang_code": "a"},
+            "am_echo": {"grade": "D", "language": "American English", "lang_code": "a"},
+            "am_eric": {"grade": "D", "language": "American English", "lang_code": "a"},
+            "am_fenrir": {"grade": "C+", "language": "American English", "lang_code": "a"},
+            "am_liam": {"grade": "D", "language": "American English", "lang_code": "a"},
+            "am_michael": {"grade": "C+", "language": "American English", "lang_code": "a"},
+            "am_onyx": {"grade": "D", "language": "American English", "lang_code": "a"},
+            "am_puck": {"grade": "C+", "language": "American English", "lang_code": "a"},
+            "am_santa": {"grade": "D-", "language": "American English", "lang_code": "a"},
+            
+            # British English
+            "bf_alice": {"grade": "D", "language": "British English", "lang_code": "b"},
+            "bf_emma": {"grade": "B-", "language": "British English", "lang_code": "b"},
+            "bf_isabella": {"grade": "C", "language": "British English", "lang_code": "b"},
+            "bf_lily": {"grade": "D", "language": "British English", "lang_code": "b"},
+            "bm_daniel": {"grade": "D", "language": "British English", "lang_code": "b"},
+            "bm_fable": {"grade": "C", "language": "British English", "lang_code": "b"},
+            "bm_george": {"grade": "C", "language": "British English", "lang_code": "b"},
+            "bm_lewis": {"grade": "D+", "language": "British English", "lang_code": "b"},
+            
+            # Japanese
+            "jf_alpha": {"grade": "C+", "language": "Japanese", "lang_code": "j"},
+            "jf_gongitsune": {"grade": "C", "language": "Japanese", "lang_code": "j"},
+            "jf_nezumi": {"grade": "C-", "language": "Japanese", "lang_code": "j"},
+            "jf_tebukuro": {"grade": "C", "language": "Japanese", "lang_code": "j"},
+            "jm_kumo": {"grade": "C-", "language": "Japanese", "lang_code": "j"},
+            
+            # Mandarin Chinese
+            "zf_xiaobei": {"grade": "D", "language": "Mandarin Chinese", "lang_code": "z"},
+            "zf_xiaoni": {"grade": "D", "language": "Mandarin Chinese", "lang_code": "z"},
+            "zf_xiaoxiao": {"grade": "D", "language": "Mandarin Chinese", "lang_code": "z"},
+            "zf_xiaoyi": {"grade": "D", "language": "Mandarin Chinese", "lang_code": "z"},
+            "zm_yunjian": {"grade": "D", "language": "Mandarin Chinese", "lang_code": "z"},
+            "zm_yunxi": {"grade": "D", "language": "Mandarin Chinese", "lang_code": "z"},
+            "zm_yunxia": {"grade": "D", "language": "Mandarin Chinese", "lang_code": "z"},
+            "zm_yunyang": {"grade": "D", "language": "Mandarin Chinese", "lang_code": "z"},
+            
+            # Spanish
+            "ef_dora": {"grade": "N/A", "language": "Spanish", "lang_code": "e"},
+            "em_alex": {"grade": "N/A", "language": "Spanish", "lang_code": "e"},
+            "em_santa": {"grade": "N/A", "language": "Spanish", "lang_code": "e"},
+            
+            # French
+            "ff_siwis": {"grade": "B-", "language": "French", "lang_code": "f"},
+            
+            # Hindi
+            "hf_alpha": {"grade": "C", "language": "Hindi", "lang_code": "h"},
+            "hf_beta": {"grade": "C", "language": "Hindi", "lang_code": "h"},
+            "hm_omega": {"grade": "C", "language": "Hindi", "lang_code": "h"},
+            "hm_psi": {"grade": "C", "language": "Hindi", "lang_code": "h"},
+            
+            # Italian
+            "if_sara": {"grade": "C", "language": "Italian", "lang_code": "i"},
+            "im_nicola": {"grade": "C", "language": "Italian", "lang_code": "i"},
+            
+            # Brazilian Portuguese
+            "pf_dora": {"grade": "N/A", "language": "Brazilian Portuguese", "lang_code": "p"},
+            "pm_alex": {"grade": "N/A", "language": "Brazilian Portuguese", "lang_code": "p"},
+            "pm_santa": {"grade": "N/A", "language": "Brazilian Portuguese", "lang_code": "p"}
+        }
+        
+        # Create voice list with grades for display
+        voices_with_grades = [
+            f"{voice} ({data['grade']})" for voice, data in self.voice_data.items()
         ]
+        
+        # Language mapping
+        self.language_codes = {
+            "American English": "a",
+            "British English": "b",
+            "Japanese": "j",
+            "Mandarin Chinese": "z",
+            "Spanish": "e",
+            "French": "f",
+            "Hindi": "h",
+            "Italian": "i",
+            "Brazilian Portuguese": "p"
+        }
+        
+        # Current language (default to American English)
+        self.language_var = tk.StringVar(value="American English")
+        
+        # Create a frame for language dropdown
+        language_frame = ttk.Frame(voice_frame)
+        language_frame.pack(fill="x", pady=(0, 10))
+        
+        ttk.Label(language_frame, text="Language:").pack(anchor="w")
+        
+        # Language dropdown
+        languages = list(self.language_codes.keys())
+        self.language_dropdown = ttk.Combobox(language_frame, textvariable=self.language_var, values=languages, state="readonly", width=30)
+        self.language_dropdown.pack(side="left", padx=(0, 5))
+        self.language_dropdown.set("American English")  # Set default value
+        
+        # Bind language change event
+        self.language_var.trace_add('write', self._on_language_changed)
         
         # Create a frame for voice dropdown and play sample button
         voice_control_frame = ttk.Frame(voice_frame)
         voice_control_frame.pack(fill="x", pady=(5, 0))
         
-        self.voice_dropdown = ttk.Combobox(voice_control_frame, textvariable=self.voice_var, values=voices, state="readonly", width=30)
+        # Voice dropdown with grades
+        voices_with_grades = [
+            f"{voice} ({data['grade']})" for voice, data in self.voice_data.items()
+        ]
+        self.voice_dropdown = ttk.Combobox(voice_control_frame, textvariable=self.voice_var, values=voices_with_grades, state="readonly", width=30)
         self.voice_dropdown.pack(side="left", padx=(0, 5))
-        self.voice_dropdown.set("af_heart")  # Set default value
+        self.voice_dropdown.set("af_heart (A)")  # Set default value
         
         # Play Sample button (disabled initially until pipeline loads)
         self.play_sample_btn = ttk.Button(voice_control_frame, text="Play Sample", command=self.play_sample, state="disabled")
@@ -318,32 +413,11 @@ class TextToSpeechApp:
         self.sample_rate_spinbox.pack(side="left")
         ttk.Label(sample_rate_frame, text="Hz").pack(side="left", padx=(5, 0))
         
-        # MP3 conversion checkbox and bitrate
-        ttk.Label(voice_frame, text="MP3 Conversion:").pack(anchor="w", pady=(10, 0))
-        
-        mp3_frame = ttk.Frame(voice_frame)
-        mp3_frame.pack(fill="x", pady=(5, 0))
-        
-        self.convert_to_mp3_var = tk.BooleanVar(value=False)
-        self.mp3_checkbox = ttk.Checkbutton(mp3_frame, text="Convert to MP3", variable=self.convert_to_mp3_var)
-        self.mp3_checkbox.pack(side="left", padx=(0, 10))
-        
-        ttk.Label(mp3_frame, text="Bitrate:").pack(side="left", padx=(0, 5))
-        
-        self.mp3_bitrate_var = tk.StringVar(value="192k")
-        mp3_bitrates = ["64k", "96k", "128k", "192k", "256k", "320k"]
-        self.mp3_bitrate_combo = ttk.Combobox(mp3_frame, textvariable=self.mp3_bitrate_var, values=mp3_bitrates, state="readonly", width=8)
-        self.mp3_bitrate_combo.pack(side="left")
-        self.mp3_bitrate_combo.set("192k")  # Set default value
-        
-        # Add callback to update output file extension when MP3 checkbox is toggled
-        self.convert_to_mp3_var.trace_add('write', self._on_mp3_checkbox_changed)
-        
     def create_audio_processing_settings_section(self, parent):
         """Create the audio processing settings section with threshold slider and margin spinbox"""
         # Audio processing settings section
         settings_frame = ttk.LabelFrame(parent, text="Audio Processing Settings", padding="10")
-        settings_frame.pack(fill="x", pady=(0, 10))
+        settings_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
         
         # Leading silence threshold slider
         ttk.Label(settings_frame, text="Leading/Trailing Silence Trim Threshold:").pack(anchor="w")
@@ -390,6 +464,27 @@ class TextToSpeechApp:
         
         # Add trace to handle batch count changes
         self.batch_count_var.trace_add('write', self._on_batch_count_changed)
+        
+        # MP3 conversion checkbox and bitrate
+        ttk.Label(settings_frame, text="MP3 Conversion:").pack(anchor="w", pady=(10, 0))
+        
+        mp3_frame = ttk.Frame(settings_frame)
+        mp3_frame.pack(fill="x", pady=(5, 0))
+        
+        self.convert_to_mp3_var = tk.BooleanVar(value=False)
+        self.mp3_checkbox = ttk.Checkbutton(mp3_frame, text="Convert to MP3", variable=self.convert_to_mp3_var)
+        self.mp3_checkbox.pack(side="left", padx=(0, 10))
+        
+        ttk.Label(mp3_frame, text="Bitrate:").pack(side="left", padx=(0, 5))
+        
+        self.mp3_bitrate_var = tk.StringVar(value="192k")
+        mp3_bitrates = ["64k", "96k", "128k", "192k", "256k", "320k"]
+        self.mp3_bitrate_combo = ttk.Combobox(mp3_frame, textvariable=self.mp3_bitrate_var, values=mp3_bitrates, state="readonly", width=8)
+        self.mp3_bitrate_combo.pack(side="left")
+        self.mp3_bitrate_combo.set("192k")  # Set default value
+        
+        # Add callback to update output file extension when MP3 checkbox is toggled
+        self.convert_to_mp3_var.trace_add('write', self._on_mp3_checkbox_changed)
         
     def create_progress_section(self, parent):
         """Create the progress section with status label, timer, and progress bar"""
@@ -568,7 +663,13 @@ class TextToSpeechApp:
             try:
                 with open(lockfile_path, 'r') as lf:
                     resume_info = json.load(lf)
-                    self.voice_var.set(resume_info['voice'])
+                    # Set voice with grade if available
+                    voice = resume_info['voice']
+                    if voice in self.voice_data:
+                        grade = self.voice_data[voice]['grade']
+                        self.voice_var.set(f"{voice} ({grade})")
+                    else:
+                        self.voice_var.set(voice)
                     self.speed_var.set(resume_info.get('speed', 1.0))
                     self.sample_rate_var.set(resume_info.get('sample_rate', 24000))
                     self.convert_to_mp3_var.set(resume_info.get('convert_to_mp3', False))
@@ -587,7 +688,10 @@ class TextToSpeechApp:
 
         if resume_info:
             mp3_info = f", MP3: {self.mp3_bitrate_var.get()}" if self.convert_to_mp3_var.get() else ""
-            self.status_var.set(f"Resuming from chunk {self.start_chunk_idx + 1} with voice {self.voice_var.get()}, speed {self.speed_var.get()}x, sample rate {self.sample_rate_var.get()}Hz{mp3_info}...")
+            # Extract voice identifier without grade for status display
+            voice_with_grade = self.voice_var.get()
+            voice = voice_with_grade.split(" (")[0]  # Extract voice identifier before the grade
+            self.status_var.set(f"Resuming from chunk {self.start_chunk_idx + 1} with voice {voice}, speed {self.speed_var.get()}x, sample rate {self.sample_rate_var.get()}Hz{mp3_info}...")
             
         self.root.update()
 
@@ -620,7 +724,8 @@ class TextToSpeechApp:
                 failure_info = {
                     'failed_chunk_index': self.current_chunk_idx,
                     'error_message': 'Interrupted by user/system shutdown',
-                    'voice': self.voice_var.get(),
+                    # Extract voice identifier without grade
+                    'voice': self.voice_var.get().split(" (")[0],
                     'speed': self.speed_var.get(),
                     'sample_rate': self.sample_rate_var.get(),
                     'convert_to_mp3': self.convert_to_mp3_var.get(),
@@ -699,8 +804,9 @@ class TextToSpeechApp:
             self.app_state.set_state(AppState.PROCESSING)
             self.current_queue_index = 0
             
-            self.convert_worker_thread = threading.Thread(target=self.queue_worker.process_queue, daemon=True)
-            self.convert_worker_thread.start()
+            if self.queue_worker is not None:
+                self.convert_worker_thread = threading.Thread(target=self.queue_worker.process_queue, daemon=True)
+                self.convert_worker_thread.start()
         else:
             # Process single file (original behavior)
             input_path = self.input_path_var.get()
@@ -722,8 +828,9 @@ class TextToSpeechApp:
             # Start conversion in background thread
             self.app_state.set_state(AppState.PROCESSING)
             
-            self.convert_worker_thread = threading.Thread(target=self.convert_worker.convert_file, args=(input_path, output_path), daemon=True)
-            self.convert_worker_thread.start()
+            if self.convert_worker is not None:
+                self.convert_worker_thread = threading.Thread(target=self.convert_worker.convert_file, args=(input_path, output_path), daemon=True)
+                self.convert_worker_thread.start()
         
     def abort_conversion_process(self):
         """Abort the current conversion process"""
@@ -768,8 +875,9 @@ class TextToSpeechApp:
         # Static sample text
         sample_text = "Hello! This is a sample of how the selected voice sounds. I hope you like it!"
         
-        # Get selected voice and parameters
-        voice = self.voice_var.get()
+        # Get selected voice and parameters (extract voice identifier without grade)
+        voice_with_grade = self.voice_var.get()
+        voice = voice_with_grade.split(" (")[0]  # Extract voice identifier before the grade
         speed = self.speed_var.get()
         sample_rate = self.sample_rate_var.get()
         
@@ -779,12 +887,9 @@ class TextToSpeechApp:
         # Generate audio in a separate thread to avoid blocking UI
         def generate_and_play():
             try:
-                # Generate audio using the first available pipeline
-                if self.pipeline_loaded and hasattr(self, 'pipelines') and self.pipelines:
-                    # Use the main app's pipeline if available
-                    pipeline = self.pipelines[0]
-                elif self.convert_worker and hasattr(self.convert_worker, 'pipelines') and self.convert_worker.pipelines:
-                    # Use the worker's pipeline if main pipeline isn't available
+                # Generate audio using the worker's pipeline
+                if self.convert_worker and hasattr(self.convert_worker, 'pipelines') and self.convert_worker.pipelines:
+                    # Use the worker's pipeline
                     pipeline = self.convert_worker.pipelines[0]
                 else:
                     raise ValueError("No pipeline available")
@@ -810,7 +915,11 @@ class TextToSpeechApp:
                 # Resample if needed
                 if sample_rate != 24000:  # Kokoro default is 24000 Hz
                     import torchaudio
-                    full_audio = torchaudio.functional.resample(full_audio.T, 24000, sample_rate).T
+                    import torch
+                    # Convert numpy array to tensor
+                    audio_tensor = torch.from_numpy(full_audio.T)
+                    resampled_audio = torchaudio.functional.resample(audio_tensor, 24000, sample_rate)
+                    full_audio = resampled_audio.T.numpy()
                 
                 # Create a temporary file
                 with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
@@ -1040,6 +1149,29 @@ class TextToSpeechApp:
         """Handle batch count changes to recreate pipelines in the worker"""
         if self.pipeline_loaded and self.convert_worker:
             self.convert_worker.recreate_pipelines()
+            
+    def _on_language_changed(self, *args):
+        """Handle language changes to filter voices and recreate pipelines"""
+        selected_language = self.language_var.get()
+        lang_code = self.language_codes.get(selected_language, "a")  # Default to American English
+        
+        # Filter voices by selected language
+        filtered_voices = [
+            f"{voice} ({data['grade']})" 
+            for voice, data in self.voice_data.items() 
+            if data['lang_code'] == lang_code
+        ]
+        
+        # Update voice dropdown values
+        self.voice_dropdown['values'] = filtered_voices
+        
+        # Set first voice as default if available
+        if filtered_voices:
+            self.voice_dropdown.set(filtered_voices[0])
+            
+        # Recreate pipelines with new language
+        if self.pipeline_loaded and self.convert_worker:
+            self.convert_worker.recreate_pipelines(lang_code)
 
 def main():
     root = tk.Tk()

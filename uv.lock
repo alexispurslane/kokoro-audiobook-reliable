@@ -970,6 +970,15 @@ wheels = [
 ]
 
 [[package]]
+name = "ordered-set"
+version = "4.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4c/ca/bfac8bc689799bcca4157e0e0ced07e70ce125193fc2e166d2e685b7e2fe/ordered-set-4.1.0.tar.gz", hash = "sha256:694a8e44c87657c59292ede72891eb91d34131f6531463aab3009191c77364a8", size = 12826, upload-time = "2022-01-26T14:38:56.6Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/33/55/af02708f230eb77084a299d7b08175cff006dea4f2721074b92cdb0296c0/ordered_set-4.1.0-py3-none-any.whl", hash = "sha256:046e1132c71fcf3330438a539928932caf51ddbc582496833e23de611de14562", size = 7634, upload-time = "2022-01-26T14:38:48.677Z" },
+]
+
+[[package]]
 name = "packaging"
 version = "25.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1147,6 +1156,17 @@ sdist = { url = "https://files.pythonhosted.org/packages/b0/77/a5b8c569bf593b014
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c7/21/705964c7812476f378728bdf590ca4b771ec72385c533964653c68e86bdc/pygments-2.19.2-py3-none-any.whl", hash = "sha256:86540386c03d588bb81d44bc3928634ff26449851e99741617ecb9037ee5ec0b", size = 1225217, upload-time = "2025-06-21T13:39:07.939Z" },
 ]
+
+[[package]]
+name = "pyopenjtalk"
+version = "0.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.3.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/58/74/ccd31c696f047ba381f9b11a504bf1199756c3f30f3de64e3eeb83e10b4a/pyopenjtalk-0.4.1.tar.gz", hash = "sha256:d5ada46f7fc2b52c1c79c273eb9668ff6ad7ab276a8db9d8be119ef93440f0dc", size = 1397999, upload-time = "2025-04-08T06:27:46.528Z" }
 
 [[package]]
 name = "pyparsing"
@@ -1937,8 +1957,10 @@ dependencies = [
     { name = "nltk" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "ordered-set" },
     { name = "pip" },
     { name = "pydub" },
+    { name = "pyopenjtalk" },
     { name = "simpleaudio" },
     { name = "sounddevice" },
     { name = "soundfile" },
@@ -1957,8 +1979,10 @@ requires-dist = [
     { name = "kokoro", specifier = ">=0.9.4" },
     { name = "nltk" },
     { name = "numpy", specifier = ">=2.2.6" },
+    { name = "ordered-set", specifier = ">=4.1.0" },
     { name = "pip", specifier = ">=25.2" },
     { name = "pydub", specifier = ">=0.25.1" },
+    { name = "pyopenjtalk", specifier = ">=0.4.1" },
     { name = "simpleaudio", specifier = ">=1.0.4" },
     { name = "sounddevice", specifier = ">=0.5.2" },
     { name = "soundfile" },

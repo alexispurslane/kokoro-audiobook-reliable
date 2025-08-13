@@ -8,7 +8,8 @@ A graphical user interface for the Kokoro text-to-speech system with advanced fe
 
 - **Fast and high quality** text to speech conversion, thanks to Kokoro-82M
 - **Easy-to-use cross-platform GUI with native look-and-feel** for converting text files to high-quality speech
-- **28 different voice options with the ability to control voice speed and play voice samples** including American, British, and other accents for both male and female voices
+- **Multilingual support** with voices in 9 languages including American English, British English, Japanese, Mandarin Chinese, Spanish, French, Hindi, Italian, and Brazilian Portuguese
+- **51 different voice options with quality grades** to help you choose the best voice for your needs, with the ability to control voice speed and play voice samples
 - **Progress tracking** with real-time status updates, a propotional progress bar, and estimated time remaining
 - **Support for MP3 output with specified bitrate** so that when you get a final WAV file, you can easily convert it to something smaller and more efficient
 - **Advanced text processing** with automatic sentence splitting and long sentence handling
@@ -72,14 +73,15 @@ uv run main.py
 
 1. Select a text file to convert to speech
 2. Choose an output file path for the audio
-3. Select a voice option from the 28 available voices
-4. Adjust silence trimming parameters if desired:
+3. Select a language from the language dropdown
+4. Choose a voice option from the available voices for that language, with quality grades displayed to help you choose
+5. Adjust silence trimming parameters if desired:
    - **Silence Trim Threshold**: Controls sensitivity of silence detection (0-0.5)
    - **Silence Trim Margin**: Extra samples to keep before/after detected sound (0-500ms)
-5. Click "Convert to Speech" to start the conversion
-6. Monitor progress in the progress bar and console output
-7. Use "Pause" to interrupt and save progress for later resumption, or "Stop" to end without saving progress
-8. Your audio file will be saved to the specified location
+6. Click "Convert to Speech" to start the conversion
+7. Monitor progress in the progress bar and console output
+8. Use "Pause" to interrupt and save progress for later resumption, or "Stop" to end without saving progress
+9. Your audio file will be saved to the specified location
 
 ## Note
 

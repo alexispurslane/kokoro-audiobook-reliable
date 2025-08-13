@@ -16,6 +16,8 @@ dependencies = [
     "sounddevice>=0.5.2",
     "simpleaudio>=1.0.4",
     "pydub>=0.25.1",
+    "pyopenjtalk>=0.4.1",
+    "ordered-set>=4.1.0",
 ]
 
 

@@ -58,20 +58,18 @@ class ConvertWorker:
             if not self.app.pipeline_loaded:
                 raise ValueError("Pipeline not loaded")
                 
+            # Get selected voice (extract voice identifier without grade)
+            voice_with_grade = self.app.voice_var.get()
+            voice = voice_with_grade.split(" (")[0]  # Extract voice identifier before the grade
+                        
             # Read text file
             with open(input_path, 'r', encoding='utf-8') as f:
                 text = f.read().strip() + f"""
 
-                We have now reached the end of your audiobook. This was read to you by Kokoro-82M using the {self.app.voice_var.get()} voice, through Alexis Dumas's TTS program designed for long texts and reliability.
+                We have now reached the end of your audiobook. This was read to you by Kokoro-82M using the {voice} voice, through Alexis Dumas's TTS program designed for long texts and reliability.
 
                 Thank you!
                 """
-                
-            if not text:
-                raise ValueError("Input file is empty")
-                
-            # Get selected voice
-            voice = self.app.voice_var.get()
                         
             # Get speed and sample rate from UI
             speed = self.app.speed_var.get()
@@ -139,16 +137,16 @@ class ConvertWorker:
             if 'error_conversion' in self.ui_callbacks:
                 self.ui_callbacks['error_conversion'](str(e))
                 
-    def recreate_pipelines(self):
-        """Recreate pipelines based on updated batch count"""
+    def recreate_pipelines(self, lang_code='a'):
+        """Recreate pipelines based on updated batch count and language"""
         # Create new pipelines based on batch count
         batch_count = self.app.batch_count_var.get()
-        print(f"Recreating {batch_count} Kokoro pipeline(s) for ConvertWorker...")
+        print(f"Recreating {batch_count} Kokoro pipeline(s) for ConvertWorker with language code '{lang_code}'...")
         self.pipelines = []
         
         for i in range(batch_count):
             print(f"Loading pipeline {i+1}/{batch_count}...")
-            pipeline = KPipeline(repo_id='hexgrad/Kokoro-82M', lang_code='a')  # 'a' for American English
+            pipeline = KPipeline(repo_id='hexgrad/Kokoro-82M', lang_code=lang_code)
             self.pipelines.append(pipeline)
         
-        print(f"All {batch_count} Kokoro pipeline(s) recreated for ConvertWorker")
+        print(f"All {batch_count} Kokoro pipeline(s) recreated for ConvertWorker with language code '{lang_code}'")
