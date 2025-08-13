@@ -1725,6 +1725,15 @@ wheels = [
 ]
 
 [[package]]
+name = "tkinterdnd2-universal"
+version = "1.7.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6f/13/41448e4c49fd4afb0eaabb442d091fd3cdf0f2f94d95b2030591c7ab37e8/tkinterdnd2-universal-1.7.3.tar.gz", hash = "sha256:658b68cc6b733176993bfc72ad11d479c6d086c7c89e536668bab51a36c50e98", size = 363441, upload-time = "2023-03-21T03:06:31.214Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d6/76/83cb9e213f583719b78e16384a3a3d0d1bf83aabc4c99e3ae7fe735365eb/tkinterdnd2_universal-1.7.3-py3-none-any.whl", hash = "sha256:5a0a5844c596951ed67c7b8c992abcced67fef87349557250de27419e12f70bf", size = 404676, upload-time = "2023-03-21T03:06:29.202Z" },
+]
+
+[[package]]
 name = "tokenizers"
 version = "0.21.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1965,6 +1974,7 @@ dependencies = [
     { name = "sounddevice" },
     { name = "soundfile" },
     { name = "tk" },
+    { name = "tkinterdnd2-universal" },
     { name = "torch" },
     { name = "torchaudio" },
 ]
@@ -1987,6 +1997,7 @@ requires-dist = [
     { name = "sounddevice", specifier = ">=0.5.2" },
     { name = "soundfile" },
     { name = "tk" },
+    { name = "tkinterdnd2-universal", specifier = ">=1.7.3" },
     { name = "torch" },
     { name = "torchaudio" },
 ]

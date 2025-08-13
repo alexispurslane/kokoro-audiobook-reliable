@@ -18,6 +18,7 @@ dependencies = [
     "pydub>=0.25.1",
     "pyopenjtalk>=0.4.1",
     "ordered-set>=4.1.0",
+    "tkinterdnd2-universal>=1.7.3",
 ]
 
 

@@ -1,5 +1,7 @@
 import os
 import sys
+import json
+import atexit
 
 # Check if we're already running with correct FFmpeg path and restart if needed
 ffmpeg_lib_path = '/opt/homebrew/opt/ffmpeg@6/lib'
@@ -14,12 +16,20 @@ if ffmpeg_lib_path not in current_dyld_path:
     os.execvpe(sys.executable, [sys.executable] + sys.argv, new_env)
 
 import time
-import json
 import signal
 import tempfile
 import simpleaudio as sa
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+
+# Try to import tkinterdnd2
+try:
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+    TKDND_AVAILABLE = True
+except ImportError:
+    TKDND_AVAILABLE = False
+    print("tkinterdnd2-universal not available, drag-and-drop support will be limited")
+
 import threading
 import numpy as np
 import soundfile as sf
@@ -94,7 +104,58 @@ class ToolTip:
         if self.tooltip_window:
             self.tooltip_window.destroy()
             self.tooltip_window = None
+
+
+class DnDEntry(ttk.Entry):
+    """A tkinter Entry widget with drag-and-drop support"""
     
+    def __init__(self, parent, app, *args, **kwargs):
+        # Extract our custom arguments
+        self.app = app
+        
+        # Pass the rest to the parent class
+        super().__init__(parent, *args, **kwargs)
+        
+        # Enable drag-and-drop if available
+        if TKDND_AVAILABLE:
+            self.drop_target_register(DND_FILES)
+            self.dnd_bind('<<Drop>>', self.on_drop)
+            
+    def on_drop(self, event):
+        """Handle file drop event"""
+        # event.data contains the dropped file paths
+        data = event.data
+        if data:
+            # Handle multiple files if needed, but we only care about the first one
+            # On Windows, paths might be enclosed in curly braces
+            # On Unix-like systems, paths are separated by spaces
+            # But paths with spaces might be quoted
+            
+            # Try to parse the data as a list of file paths
+            try:
+                import shlex
+                file_paths = shlex.split(data)
+            except:
+                # Fallback: treat as a single file path
+                file_paths = [data]
+                
+            if file_paths:
+                file_path = file_paths[0]  # Take the first file
+                if os.path.isfile(file_path) and file_path.endswith('.txt'):
+                    print(f"Dropped input file: {file_path}")
+                    self.app.input_path_var.set(file_path)
+                    
+                    # Auto-set output path if not already set
+                    if not self.app.output_path_var.get():
+                        base_name = os.path.splitext(os.path.basename(file_path))[0]
+                        extension = ".mp3" if self.app.convert_to_mp3_var.get() else ".wav"
+                        output_path = os.path.join(os.path.dirname(file_path), f"{base_name}{extension}")
+                        self.app.output_path_var.set(output_path)
+                        
+                    self.app._pull_resume_info()
+                    self.app.update_recent_files(file_path)
+                else:
+                    messagebox.showerror("Error", "Please drop a valid text file (.txt)")
 class AppState:
     """Atomic application state manager with automatic worker waiting"""
     IDLE = "IDLE"
@@ -184,6 +245,10 @@ class TextToSpeechApp:
         self.queue_items = []  # List of dictionaries with input_file, output_file, status
         self.current_queue_index = -1  # Index of currently processing queue item
         
+        # Recent files and settings
+        self.config_dir = os.path.expanduser("~/.config/kokoro-tts-gui")
+        self.recent_files = []
+        
         # Set up signal handlers for graceful shutdown
         self._setup_signal_handlers()
         
@@ -192,6 +257,10 @@ class TextToSpeechApp:
         
         # Create UI elements
         self.create_widgets()
+        
+        # Load settings after creating widgets
+        self.load_settings()
+        
         self.root.update()
         self.root.lift()
         
@@ -199,6 +268,12 @@ class TextToSpeechApp:
         
         # Load pipeline in background
         self.load_pipeline()
+        
+        # Register exit handler to save settings
+        atexit.register(self.save_settings)
+        
+        # Update UI with loaded settings
+        self.root.after(100, self.update_ui_with_loaded_settings)
         
     def create_widgets(self):
         # Main container frame
@@ -250,13 +325,26 @@ class TextToSpeechApp:
         input_row_frame.columnconfigure(0, weight=1)
         
         self.input_path_var = tk.StringVar()
-        self.input_entry = ttk.Entry(input_row_frame, textvariable=self.input_path_var, state="readonly")
+        self.input_entry = DnDEntry(input_row_frame, self, textvariable=self.input_path_var, state="readonly")
         self.input_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
-        ToolTip(self.input_entry, "The text file to convert to speech. Must be a plain text file. The file will be processed in sentence chunks for long-form reliability.")
+        ToolTip(self.input_entry, "The text file to convert to speech. Must be a plain text file. The file will be processed in sentence chunks for long-form reliability. You can also drag and drop a text file here.")
         
-        self.browse_input_btn = ttk.Button(input_row_frame, text="Browse", command=self.browse_input_file)
-        self.browse_input_btn.pack(side="left")
+        # Create a frame for the browse and recent buttons
+        button_frame = ttk.Frame(input_row_frame)
+        button_frame.pack(side="left")
+        
+        self.browse_input_btn = ttk.Button(button_frame, text="Browse", command=self.browse_input_file)
+        self.browse_input_btn.pack(side="left", padx=(0, 5))
         ToolTip(self.browse_input_btn, "Select a text file to convert to speech.")
+        
+        # Recent files dropdown menu
+        self.recent_menu = tk.Menu(button_frame, tearoff=0)
+        self.recent_btn = ttk.Menubutton(button_frame, text="Recent", menu=self.recent_menu)
+        self.recent_btn.pack(side="left")
+        ToolTip(self.recent_btn, "Open a recently used text file.")
+        
+        # Update the recent files menu
+        self.update_recent_files_menu()
         
         # Output file section
         output_frame = ttk.Frame(file_frame)
@@ -529,7 +617,7 @@ class TextToSpeechApp:
         self.margin_var = tk.IntVar(value=25)  # Default margin value in ms
         self.margin_spinbox = ttk.Spinbox(margin_frame, from_=0, to=500, textvariable=self.margin_var, width=10)
         self.margin_spinbox.pack(side="left")
-        ToolTip(self.margin_spinbox, "Extra time in milliseconds to keep before and after detected sound. Converted to samples based on current sample rate and applied during silence trimming of each audio chunk.")
+        ToolTip(self.margin_spinbox, "Base time in milliseconds to keep before and after detected sound. Converted to samples based on current sample rate and applied during silence trimming of each audio chunk. Multiplied by 2 before the end of a silence, and by 10 after, because human voices trail off more than they trail in.")
         
         ttk.Label(margin_frame, text="ms").pack(side="left", padx=(5, 0))
         
@@ -658,6 +746,7 @@ class TextToSpeechApp:
                 self.output_path_var.set(output_path)
 
             self._pull_resume_info()
+            self.update_recent_files(file_path)
                 
     def browse_output_file(self):
         """Open file dialog to select output audio file"""
@@ -679,6 +768,146 @@ class TextToSpeechApp:
         if file_path:
             print(f"Selected output file: {file_path}")
             self.output_path_var.set(file_path)
+
+    def load_settings(self):
+        """Load recent files and settings from config file"""
+        # Create config directory if it doesn't exist
+        os.makedirs(self.config_dir, exist_ok=True)
+        
+        config_file = os.path.join(self.config_dir, "settings.json")
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, 'r') as f:
+                    settings = json.load(f)
+                    
+                # Load recent files
+                self.recent_files = settings.get("recent_files", [])
+                self.update_recent_files_menu()
+                
+                # Load last used settings
+                last_settings = settings.get("last_settings", {})
+                
+                # Only set the variables if they exist (after widget creation)
+                if hasattr(self, 'voice_var') and self.voice_var:
+                    self.voice_var.set(last_settings.get("voice", "af_heart (A)"))
+                if hasattr(self, 'speed_var') and self.speed_var:
+                    self.speed_var.set(last_settings.get("speed", 1.0))
+                if hasattr(self, 'sample_rate_var') and self.sample_rate_var:
+                    self.sample_rate_var.set(last_settings.get("sample_rate", 24000))
+                if hasattr(self, 'convert_to_mp3_var') and self.convert_to_mp3_var:
+                    self.convert_to_mp3_var.set(last_settings.get("convert_to_mp3", False))
+                if hasattr(self, 'mp3_bitrate_var') and self.mp3_bitrate_var:
+                    self.mp3_bitrate_var.set(last_settings.get("mp3_bitrate", "192k"))
+                if hasattr(self, 'threshold_var') and self.threshold_var:
+                    self.threshold_var.set(last_settings.get("threshold", 0.06))
+                if hasattr(self, 'margin_var') and self.margin_var:
+                    self.margin_var.set(last_settings.get("margin", 25))
+                if hasattr(self, 'batch_count_var') and self.batch_count_var:
+                    self.batch_count_var.set(last_settings.get("batch_count", 1))
+                if hasattr(self, 'language_var') and self.language_var:
+                    self.language_var.set(last_settings.get("language", "American English"))
+                
+                # Update UI elements that depend on these settings
+                # This will be done after widget creation
+                
+            except Exception as e:
+                print(f"Error loading settings: {e}")
+
+    def save_settings(self):
+        """Save recent files and settings to config file"""
+        # Create config directory if it doesn't exist
+        os.makedirs(self.config_dir, exist_ok=True)
+        
+        # Prepare settings to save
+        settings = {
+            "recent_files": self.recent_files,
+            "last_settings": {
+                "voice": self.voice_var.get(),
+                "speed": self.speed_var.get(),
+                "sample_rate": self.sample_rate_var.get(),
+                "convert_to_mp3": self.convert_to_mp3_var.get(),
+                "mp3_bitrate": self.mp3_bitrate_var.get(),
+                "threshold": self.threshold_var.get(),
+                "margin": self.margin_var.get(),
+                "batch_count": self.batch_count_var.get(),
+                "language": self.language_var.get()
+            }
+        }
+        
+        config_file = os.path.join(self.config_dir, "settings.json")
+        try:
+            with open(config_file, 'w') as f:
+                json.dump(settings, f, indent=2)
+        except Exception as e:
+            print(f"Error saving settings: {e}")
+
+    def update_recent_files(self, file_path):
+        """Add file to recent files list (limit to 10 files)"""
+        if file_path in self.recent_files:
+            self.recent_files.remove(file_path)
+        self.recent_files.insert(0, file_path)
+        self.recent_files = self.recent_files[:10]  # Keep only the last 10 files
+        
+        # Update the recent files menu
+        self.update_recent_files_menu()
+
+    def update_recent_files_menu(self):
+        """Update the recent files menu"""
+        # Clear existing menu items
+        self.recent_menu.delete(0, tk.END)
+        
+        # Add recent files to menu
+        for file_path in self.recent_files:
+            self.recent_menu.add_command(
+                label=os.path.basename(file_path),
+                command=lambda fp=file_path: self.open_recent_file(fp)
+            )
+        
+        # Add separator and clear option if there are recent files
+        if self.recent_files:
+            self.recent_menu.add_separator()
+            self.recent_menu.add_command(
+                label="Clear Recent Files",
+                command=self.clear_recent_files
+            )
+
+    def open_recent_file(self, file_path):
+        """Open a file from the recent files list"""
+        if os.path.exists(file_path):
+            self.input_path_var.set(file_path)
+            
+            # Auto-set output path if not already set
+            if not self.output_path_var.get():
+                base_name = os.path.splitext(os.path.basename(file_path))[0]
+                extension = ".mp3" if self.convert_to_mp3_var.get() else ".wav"
+                output_path = os.path.join(os.path.dirname(file_path), f"{base_name}{extension}")
+                self.output_path_var.set(output_path)
+                
+            self._pull_resume_info()
+            self.update_recent_files(file_path)
+        else:
+            messagebox.showerror("Error", f"File not found: {file_path}")
+            # Remove from recent files
+            if file_path in self.recent_files:
+                self.recent_files.remove(file_path)
+                self.update_recent_files_menu()
+
+    def clear_recent_files(self):
+        """Clear the recent files list"""
+        self.recent_files = []
+        self.update_recent_files_menu()
+        
+    def update_ui_with_loaded_settings(self):
+        """Update UI elements with loaded settings after widget creation"""
+        # Update UI elements that depend on these settings
+        if hasattr(self, 'language_var') and self.language_var:
+            self._on_language_changed()  # This will update the voice dropdown
+            
+        # Update display labels for sliders
+        if hasattr(self, 'speed_var') and self.speed_var:
+            self.update_speed_display(self.speed_var.get())
+        if hasattr(self, 'threshold_var') and self.threshold_var:
+            self.update_threshold_display(self.threshold_var.get())
 
     def add_to_queue(self):
         """Add current input and output files to the queue"""
@@ -1285,7 +1514,11 @@ class TextToSpeechApp:
             self.convert_worker.recreate_pipelines(lang_code)
 
 def main():
-    root = tk.Tk()
+    # Use TkinterDnD root window if available
+    if TKDND_AVAILABLE:
+        root = TkinterDnD.Tk()
+    else:
+        root = tk.Tk()
     app = TextToSpeechApp(root)
     root.mainloop()
 

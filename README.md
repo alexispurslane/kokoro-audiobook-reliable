@@ -7,7 +7,7 @@ A graphical user interface for the Kokoro text-to-speech system with advanced fe
 ## Features
 
 - **Fast and high quality** text to speech conversion, thanks to Kokoro-82M
-- **Easy-to-use cross-platform GUI with native look-and-feel** for converting text files to high-quality speech
+- **Easy-to-use cross-platform GUI with native look-and-feel** for converting text files to high-quality speech, including features like extensive tooltips and drag and drop functionality.
 - **Multilingual support** with voices in 9 languages including American English, British English, Japanese, Mandarin Chinese, Spanish, French, Hindi, Italian, and Brazilian Portuguese
 - **51 different voice options with quality grades** to help you choose the best voice for your needs, with the ability to control voice speed and play voice samples
 - **Progress tracking** with real-time status updates, a propotional progress bar, and estimated time remaining
@@ -24,7 +24,7 @@ A graphical user interface for the Kokoro text-to-speech system with advanced fe
 The reason I made this app instead of using one of the many, many existing options, was that they all lacked two key features that my version has:
 
 ### Resume capability
-As chunks are converted, this program streams the chunk audio to an uncompressed wav file, so that if a sigterm or sigint is received, or the user quits the app, hits pause, or even if an exception is raised, all that needs to be done to save the progress achieved up until that point is to save a lockfile detailing which chunk the conversion left off at and what the conversion settings were, and then safely close the sound file. 
+As chunks are converted, this program streams the chunk audio to an uncompressed wav file, so that if a sigterm or sigint is received, or the user quits the app, hits pause, or even if an exception is raised, all that needs to be done to save the progress achieved up until that point is to save a lockfile detailing which chunk the conversion left off at and what the conversion settings were, and then safely close the sound file.
 
 This doesn't just ensure that what was already done isn't lost, either: this program is capable of resuming from where it left off based on the lockfile, *continuing to add more audio to the previously incomplete audio file*, thus allowing arbitrary and seamless error recovery.
 
