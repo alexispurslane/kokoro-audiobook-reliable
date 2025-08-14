@@ -1,7 +1,57 @@
 import re
 import nltk
 from nltk.tokenize import sent_tokenize
+import unicodedata
 
+def is_unwanted_unicode(char):
+    """Check if a character is an unwanted unicode character (blocks, emoji, invisible characters, etc.)"""
+    # Get the unicode category of the character
+    category = unicodedata.category(char)
+    
+    # Check for control characters (except common whitespace)
+    if category.startswith('C') and char not in ['\n', '\r', '\t']:
+        return True
+    
+    # Check for surrogate pairs and private use characters
+    if category.startswith('S'):
+        return True
+        
+    # Check for variation selectors
+    if category == 'Mn' and unicodedata.name(char, '').startswith('VARIATION SELECTOR'):
+        return True
+        
+    # Check for specific unicode ranges that are typically unwanted
+    code = ord(char)
+    
+    # Emojis and symbols
+    if (0x1F300 <= code <= 0x1F9FF or  # Emoticons, Symbols, Transport, Miscellaneous
+        0x2600 <= code <= 0x26FF or    # Miscellaneous Symbols
+        0x2700 <= code <= 0x27BF or    # Dingbats
+        0xFE00 <= code <= 0xFE0F or    # Variation Selectors
+        0x1F1E6 <= code <= 0x1F1FF or  # Regional indicator symbols
+        0x1F600 <= code <= 0x1F64F or  # Emoticons
+        0x1F680 <= code <= 0x1F6FF or  # Transport and Map Symbols
+        0x1F700 <= code <= 0x1F77F or  # Alchemical Symbols
+        0x1F780 <= code <= 0x1F7FF or  # Geometric Shapes Extended
+        0x1F800 <= code <= 0x1F8FF or  # Supplemental Arrows-C
+        0x1F900 <= code <= 0x1F9FF or  # Supplemental Symbols and Pictographs
+        0x1FA00 <= code <= 0x1FA6F or  # Chess Symbols
+        0x1FA70 <= code <= 0x1FAFF or  # Symbols and Pictographs Extended-A
+        0x2B00 <= code <= 0x2BFF or    # Miscellaneous Symbols and Arrows
+        0x2300 <= code <= 0x23FF):     # Miscellaneous Technical
+        return True
+    
+    # Zero-width characters
+    if code in [0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF]:
+        return True
+        
+    return False
+
+def clean_unicode_text(text):
+    """Remove unwanted unicode characters while preserving multilingual text"""
+    # Filter out unwanted unicode characters
+    cleaned_text = ''.join(char for char in text if not is_unwanted_unicode(char))
+    return cleaned_text
 
 def split_at_breakpoints(chunk, breakpoints):
     """Split a chunk at natural breakpoints (commas, semicolons, etc.)"""

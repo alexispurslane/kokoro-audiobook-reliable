@@ -40,7 +40,7 @@ class ConvertWorker:
             print(f"Error converting to MP3: {e}")
             raise
         
-    def convert_file(self, input_path, output_path):
+    def convert_file(self, input_path, output_path, text_content=None):
         output_path = os.path.splitext(output_path)[0]+'.wav' # in case the final destination file is mp3, we still wanna generate an intermediate wav 
         """Convert a single text file to speech"""
         try:
@@ -61,14 +61,23 @@ class ConvertWorker:
             voice_with_grade = self.app.voice_var.get()
             voice = voice_with_grade.split(" (")[0]  # Extract voice identifier before the grade
                         
-            # Read text file
-            with open(input_path, 'r', encoding='utf-8') as f:
-                text = f.read().strip() + f"""
+            # Use provided text content or read from file
+            if text_content is not None:
+                text = text_content.strip() + f"""
 
                 We have now reached the end of your audiobook. This was read to you by Kokoro-82M using the {voice} voice, through Alexis Dumas's TTS program designed for long texts and reliability.
 
                 Thank you!
                 """
+            else:
+                # Read text file
+                with open(input_path, 'r', encoding='utf-8') as f:
+                    text = f.read().strip() + f"""
+
+                    We have now reached the end of your audiobook. This was read to you by Kokoro-82M using the {voice} voice, through Alexis Dumas's TTS program designed for long texts and reliability.
+
+                    Thank you!
+                    """
                         
             # Get speed and sample rate from UI
             speed = self.app.speed_var.get()
@@ -146,13 +155,23 @@ class ConvertWorker:
         print(f"Recreating {batch_count} Kokoro pipeline(s) for ConvertWorker with language code '{lang_code}'...")
         self.pipelines = []
         
-        for i in range(batch_count):
-            print(f"Loading pipeline {i+1}/{batch_count}...")
-            # Report progress to UI
-            if 'update_progress' in self.ui_callbacks:
-                progress_msg = f"Loading pipeline {i+1}/{batch_count}..."
-                self.ui_callbacks['update_progress'](progress_msg=progress_msg, progress_value=(i + 1) / batch_count)
-            pipeline = KPipeline(repo_id='hexgrad/Kokoro-82M', lang_code=lang_code)
-            self.pipelines.append(pipeline)
-        
-        print(f"All {batch_count} Kokoro pipeline(s) recreated for ConvertWorker with language code '{lang_code}'")
+        try:
+            for i in range(batch_count):
+                print(f"Loading pipeline {i+1}/{batch_count}...")
+                # Report progress to UI
+                if 'update_progress' in self.ui_callbacks:
+                    progress_msg = f"Loading pipeline {i+1}/{batch_count}..."
+                    self.ui_callbacks['update_progress'](progress_msg=progress_msg, progress_value=(i + 1) / batch_count)
+                pipeline = KPipeline(repo_id='hexgrad/Kokoro-82M', lang_code=lang_code)
+                self.pipelines.append(pipeline)
+            
+            print(f"All {batch_count} Kokoro pipeline(s) recreated for ConvertWorker with language code '{lang_code}'")
+        except Exception as e:
+            # Handle pipeline loading errors
+            error_msg = f"Failed to load Kokoro pipeline: {str(e)}"
+            print(f"Error loading pipeline: {error_msg}")
+            # If we have an error callback, use it to show the error in the GUI
+            if 'error_conversion' in self.ui_callbacks:
+                self.ui_callbacks['error_conversion'](error_msg)
+            # Re-raise the exception so the caller knows about the failure
+            raise

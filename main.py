@@ -15,6 +15,12 @@ if ffmpeg_lib_path not in current_dyld_path:
     # Restart the script with correct environment
     os.execvpe(sys.executable, [sys.executable] + sys.argv, new_env)
 
+# Suppress torch warnings before importing any modules that might import torch
+import warnings
+warnings.filterwarnings("ignore", module="torch")
+warnings.filterwarnings("ignore", category=UserWarning, module="torch")
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
+
 import time
 import signal
 import tempfile
@@ -39,6 +45,7 @@ from typing import Optional
 from tts_generator import process_chunk, generate_long
 from queue_worker import QueueWorker
 from convert_worker import ConvertWorker
+from text_processor import clean_unicode_text
 
 class ToolTip:
     """A tooltip class for tkinter widgets based on the GeeksforGeeks approach"""
@@ -241,6 +248,9 @@ class TextToSpeechApp:
         self.convert_worker_thread = None
         self.app_state = AppState(wait_for_worker_callback=self._wait_for_worker)
         
+        # Text editor state
+        self.text_editor_modified = False
+        
         # Queue management
         self.queue_items = []  # List of dictionaries with input_file, output_file, status
         self.current_queue_index = -1  # Index of currently processing queue item
@@ -345,6 +355,72 @@ class TextToSpeechApp:
         
         # Update the recent files menu
         self.update_recent_files_menu()
+        
+        # Collapsible text editor section
+        self.editor_collapsed = True
+        self.editor_frame = ttk.Frame(file_frame)
+        self.editor_frame.pack(fill="x", pady=(10, 0))
+        
+        # Editor toggle button
+        self.editor_toggle_btn = ttk.Button(
+            self.editor_frame, 
+            text="▼ Edit Text Content", 
+            command=self.toggle_text_editor
+        )
+        self.editor_toggle_btn.pack(anchor="w")
+        ToolTip(self.editor_toggle_btn, "Toggle the text editor to view and edit the content that will be processed.")
+        
+        # Editor content frame (initially hidden)
+        self.editor_content_frame = ttk.Frame(self.editor_frame)
+        self.editor_content_frame.pack(fill="both", expand=True, pady=(5, 0))
+        self.editor_content_frame.pack_forget()  # Hide initially
+        
+        # Text editor with scrollbar
+        editor_text_container = ttk.Frame(self.editor_content_frame)
+        editor_text_container.pack(fill="both", expand=True)
+        
+        self.editor_text = tk.Text(editor_text_container, height=10, wrap="word")
+        editor_scrollbar = ttk.Scrollbar(editor_text_container, orient="vertical", command=self.editor_text.yview)
+        self.editor_text.configure(yscrollcommand=editor_scrollbar.set)
+        
+        self.editor_text.pack(side="left", fill="both", expand=True)
+        editor_scrollbar.pack(side="right", fill="y")
+        ToolTip(self.editor_text, "Edit the text content that will be processed by the TTS engine. Changes here will be used for conversion, even if not saved to the file. Use Ctrl+S or the Save button to save changes to the original file.")
+        
+        # Editor controls
+        editor_controls_frame = ttk.Frame(self.editor_content_frame)
+        editor_controls_frame.pack(fill="x", pady=(5, 0))
+        
+        # Checkbox for replacing single newlines with spaces
+        self.replace_newlines_var = tk.BooleanVar(value=False)
+        self.replace_newlines_checkbox = ttk.Checkbutton(
+            editor_controls_frame, 
+            text="Replace single newlines with spaces (preserves double newlines)", 
+            variable=self.replace_newlines_var,
+            command=self.toggle_newline_replacement
+        )
+        self.replace_newlines_checkbox.pack(side="left", padx=(0, 10))
+        ToolTip(self.replace_newlines_checkbox, "Replace single newlines with spaces while preserving double newlines. Useful for cleaning up text formatting.")
+        
+        self.save_editor_btn = ttk.Button(editor_controls_frame, text="Save to File", command=self.save_editor_content)
+        self.save_editor_btn.pack(side="left")
+        ToolTip(self.save_editor_btn, "Save the edited content back to the original file.")
+        
+        # Bind Ctrl+S to save
+        self.editor_text.bind('<Control-s>', lambda event: self.save_editor_content())
+        self.editor_text.bind('<Command-s>', lambda event: self.save_editor_content())  # For Mac
+        
+        # Bind events to track changes
+        self.editor_text.bind('<KeyPress>', self.on_text_editor_change)
+        self.editor_text.bind('<Button-1>', self.on_text_editor_change)
+        
+        # Store original text for undoing newline replacement
+        self.original_text_content = ""
+        
+        # Status label for editor
+        self.editor_status_var = tk.StringVar(value="")
+        self.editor_status_label = ttk.Label(self.editor_content_frame, textvariable=self.editor_status_var, foreground="gray")
+        self.editor_status_label.pack(anchor="w", pady=(5, 0))
         
         # Output file section
         output_frame = ttk.Frame(file_frame)
@@ -738,6 +814,9 @@ class TextToSpeechApp:
             print(f"Selected input file: {file_path}")
             self.input_path_var.set(file_path)
             
+            # Load file content into editor
+            self.load_file_content(file_path)
+            
             # Auto-set output path if not already set
             if not self.output_path_var.get():
                 base_name = os.path.splitext(os.path.basename(file_path))[0]
@@ -747,6 +826,109 @@ class TextToSpeechApp:
 
             self._pull_resume_info()
             self.update_recent_files(file_path)
+            
+    def load_file_content(self, file_path):
+        """Load the content of a text file into the editor"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                content = file.read()
+                # Clean unwanted unicode characters while preserving multilingual text
+                content = clean_unicode_text(content)
+                self.editor_text.delete(1.0, tk.END)
+                self.editor_text.insert(1.0, content)
+                self.editor_status_var.set(f"Loaded: {os.path.basename(file_path)}")
+                self.text_editor_modified = False
+                self.editor_text.edit_modified(False)
+                # Store original content for newline replacement feature
+                self.original_text_content = content
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load file content:\n{str(e)}")
+            
+    def toggle_text_editor(self):
+        """Toggle the visibility of the text editor"""
+        if self.editor_collapsed:
+            # Expand the editor
+            self.editor_content_frame.pack(fill="both", expand=True, pady=(5, 0))
+            self.editor_toggle_btn.config(text="▲ Edit Text Content")
+            self.editor_collapsed = False
+            
+            # If we have a file selected, load its content
+            file_path = self.input_path_var.get()
+            if file_path and os.path.exists(file_path):
+                self.load_file_content(file_path)
+                # Reset newline replacement checkbox when loading new content
+                self.replace_newlines_var.set(False)
+        else:
+            # Collapse the editor
+            self.editor_content_frame.pack_forget()
+            self.editor_toggle_btn.config(text="▼ Edit Text Content")
+            self.editor_collapsed = True
+            
+    def save_editor_content(self):
+        """Save the editor content back to the file"""
+        file_path = self.input_path_var.get()
+        if not file_path:
+            messagebox.showwarning("Warning", "No input file selected.")
+            return
+            
+        try:
+            content = self.editor_text.get(1.0, tk.END + "-1c")  # Get all content except last newline
+            with open(file_path, 'w', encoding='utf-8') as file:
+                file.write(content)
+            self.text_editor_modified = False
+            self.editor_text.edit_modified(False)
+            self.editor_status_var.set(f"Saved: {os.path.basename(file_path)}")
+            messagebox.showinfo("Success", "File saved successfully!")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save file:\n{str(e)}")
+
+    def toggle_newline_replacement(self):
+        """Toggle replacement of single newlines with spaces"""
+        if self.replace_newlines_var.get():
+            # Store original content before replacement
+            self.original_text_content = self.editor_text.get(1.0, tk.END + "-1c")
+            
+            # Replace single newlines with spaces, preserving double newlines
+            current_content = self.original_text_content
+            # First, temporarily replace double newlines with a placeholder
+            temp_content = current_content.replace('\n\n', 'DOUBLE_NEWLINE_PLACEHOLDER')
+            # Replace single newlines with spaces
+            temp_content = temp_content.replace('\n', ' ')
+            # Restore double newlines
+            modified_content = temp_content.replace('DOUBLE_NEWLINE_PLACEHOLDER', '\n\n')
+            
+            # Update the text editor with modified content
+            self.editor_text.delete(1.0, tk.END)
+            self.editor_text.insert(1.0, modified_content)
+        else:
+            # Restore original content
+            self.editor_text.delete(1.0, tk.END)
+            self.editor_text.insert(1.0, self.original_text_content)
+            
+        # Mark as modified
+        self.text_editor_modified = True
+        self.editor_text.edit_modified(True)
+        self.update_editor_status()
+
+    def on_text_editor_change(self, event=None):
+        """Handle changes in the text editor"""
+        # Schedule update to avoid too many calls
+        if hasattr(self, '_update_editor_status_job'):
+            self.root.after_cancel(self._update_editor_status_job)
+        self._update_editor_status_job = self.root.after(100, self.update_editor_status)
+        
+    def update_editor_status(self):
+        """Update the editor status label"""
+        if not self.editor_collapsed:
+            if self.editor_text.edit_modified():
+                self.editor_status_var.set("Modified (not saved to file)")
+                self.text_editor_modified = True
+            else:
+                file_path = self.input_path_var.get()
+                if file_path:
+                    self.editor_status_var.set(f"Loaded: {os.path.basename(file_path)}")
+                else:
+                    self.editor_status_var.set("No file loaded")
                 
     def browse_output_file(self):
         """Open file dialog to select output audio file"""
@@ -1110,15 +1292,26 @@ class TextToSpeechApp:
                 from convert_worker import ConvertWorker
                 from queue_worker import QueueWorker
                 
-                self.convert_worker = ConvertWorker(self, ui_callbacks=convert_ui_callbacks)
-                self.queue_worker = QueueWorker(self, ui_callbacks=queue_ui_callbacks | convert_ui_callbacks)
-                
-                self.status_var.set("Pipeline system initialized. Ready to convert.")
-                # Hide progress bar when done loading
-                self.progress.pack_forget()
-                # Enable the convert and play sample buttons now that pipeline system is initialized
-                self.convert_btn.config(state="normal")
-                self.play_sample_btn.config(state="normal")
+                # Initialize workers and handle any pipeline loading errors
+                try:
+                    self.convert_worker = ConvertWorker(self, ui_callbacks=convert_ui_callbacks)
+                    self.queue_worker = QueueWorker(self, ui_callbacks=queue_ui_callbacks | convert_ui_callbacks)
+                    
+                    self.status_var.set("Pipeline system initialized. Ready to convert.")
+                    # Hide progress bar when done loading
+                    self.progress.pack_forget()
+                    # Enable the convert and play sample buttons now that pipeline system is initialized
+                    self.convert_btn.config(state="normal")
+                    self.play_sample_btn.config(state="normal")
+                except Exception as e:
+                    # Handle worker initialization errors
+                    error_msg = f"Failed to initialize pipeline system: {str(e)}"
+                    self.status_var.set(error_msg)
+                    # Hide progress bar on error
+                    self.progress.pack_forget()
+                    messagebox.showerror("Error", f"Failed to initialize pipeline system:\n{str(e)}")
+                    # Reset pipeline loaded flag
+                    self.pipeline_loaded = False
             except Exception as e:
                 self.status_var.set(f"Error initializing pipeline system: {str(e)}")
                 # Hide progress bar on error
@@ -1162,12 +1355,19 @@ class TextToSpeechApp:
             if not os.path.exists(input_path):
                 messagebox.showerror("Error", "Input file does not exist.")
                 return
+            
+            # Use the edited text content
+            text_content = self.editor_text.get(1.0, tk.END)
                 
             # Start conversion in background thread
             self.app_state.set_state(AppState.PROCESSING)
             
             if self.convert_worker is not None:
-                self.convert_worker_thread = threading.Thread(target=self.convert_worker.convert_file, args=(input_path, output_path), daemon=True)
+                self.convert_worker_thread = threading.Thread(
+                    target=self.convert_worker.convert_file, 
+                    args=(input_path, output_path, text_content), 
+                    daemon=True
+                )
                 self.convert_worker_thread.start()
         
     def abort_conversion_process(self):

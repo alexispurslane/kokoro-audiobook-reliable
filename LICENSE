@@ -1,0 +1,411 @@
+           __________________________________________________
+
+               THE NOOSPHERE PUBLIC LICENSE, VERSION 1.0
+                               (NPL-1.0)
+
+                            Alexis Purslane
+           __________________________________________________
+
+
+Table of Contents
+_________________
+
+1. *Section 1: The Legal Framework*
+.. 1. *Definitions*
+.. 2. *Grant of Rights*
+.. 3. *Conditions of This License*
+.. 4. *The Regurgitation Test*
+..... 1. Note on Legal Interpretation:
+2. *The Social Contract*
+.. 1. *The Creator's Wishes*
+.. 2. *The Consequence (If You Break Faith)*
+3. Disclaimer of Warranty
+4. Limitation of Liability
+5. Anti-Nationalist Jurisdiction as a Commons Defense
+6. Exhibit A: Recommended Preamble for Source Code Files
+
+
+*THIS LICENSE IS AN ACT OF LIBERATION.* It is intended to permanently
+ place a work into the public commons to enrich the noosphere—the sphere
+ of human thought and collective intelligence. It is intended to end the
+ tyranny of the false concept of "intellectual property," which
+ introduces scarcity and territoriality into a sphere where none
+ naturally exists nor need exist, and its enforcement by the violence of
+ the long arm of the Law.
+
+The core of this license is the idea that *ONCE AN IDEA IS MADE PUBLIC,
+ONE MAY NOT CONTROL IT*.
+
+To defend this notion, we use the violence of the Law only to restrict
+the violence of the Law itself, and no more. All true freedom ---
+freedom that does not come at the expense of the equal freedom of others
+--- is preserved for those who wish to take it.
+
+
+1 *Section 1: The Legal Framework*
+==================================
+
+  This section outlines the legally binding terms under which The Work
+  is released. By releasing The Work under the NPL-1.0, the Creator(s)
+  perform an irrevocable legal act.
+
+
+1.1 *Definitions*
+~~~~~~~~~~~~~~~~~
+
+  - *"Expressive Material"* means any original product of or expression
+     of human intellectual labor --- whether with the aid of tools such
+     as generative AI and computers, or without --- such as text, code,
+     art, or any other form of intellectual or creative expression.
+  - *"The Work"* refers to the original Expressive Material being
+     released under this license.
+  - *"The Noosphere"* refers to the shared pool of human knowledge,
+     creativity, and information, accessible to all. This is equivalent
+     to the legal concept of the "public domain." The Noosphere does not
+     refer only to that body of collective works released under this
+     License or similar, but all works that are freely available to all.
+  - *"Creator(s)"* refers to individual(s) or entities (whether
+     self-owned and autonomous AI, or a collective body of people acting
+     as one) that originally created The Work and released it under this
+     license.
+  - *"Modification"* means any of the following:
+    1. Any change to the contents of a file containing The Work.
+    2. Any new file that contains any substantial part of the The Work.
+    3. Any machine learning model weights that were produced by training
+       on any amount of Expressive Material released under this License.
+       A model shall be subject to a rebuttable presumption that it is a
+       Modification if it meets the conditions of the "Regurgitation
+       Test" (see Section 1.4). The burden of proof shall fall upon the
+       model's creator to demonstrate with clear and convincing evidence
+       that The Work was not used in the training process.
+  - *"Larger Work"* means a work that combines The Work with other text,
+     code, art, or any other form of Expressive Material in separate
+     files that are not themselves part of The Work.
+  - *"You" or "Your"* means an individual or a legal entity exercising
+     permissions granted by this License.
+  - *"Use The Work"* means to apply, leverage, operationalize, run,
+     compile, read, open, view, display etc. The Work for any purpose,
+     including but not limited to public or private
+     display/appreciation, cut-up art, training a machine learning
+     model, performance, running (if it is software), conversion,
+     translation, transpilation, or teaching yourself or others.
+  - *"Contribution"* refers to the Expressive Material any specific
+     Creator adds to The Work.
+  - *"Creator Version"* refers to the combination of the Contributions
+     of others (if any) used by a Creator and that particular Creators’s
+     Contribution.
+  - *"Patent Claims" of a Creator* means any patent claim(s), including
+     without limitation, method, process, and apparatus claims, in any
+     patent Licensable by such Creator that would be infringed, but for
+     the grant of the License, by the making, Use, selling, offering for
+     sale, having made, import, or transfer of either its Contributions
+     or its Creator Version.
+  - *"Secondary License"* means one of the following licenses which are
+     deemed "close enough" to the ethos of the NPL to be allowable under
+     the circumstances outlined in Section 1.3:
+    - Mozilla Public License, v. 2.0
+    - Creative Commons Attribution-ShareAlike 4.0 International
+
+
+1.2 *Grant of Rights*
+~~~~~~~~~~~~~~~~~~~~~
+
+  1. *Grant of Rights:* Each Creator hereby grants You a worldwide,
+      royalty-free, non-exclusive, perpetual license to, subject to the
+      conditions of this License, exercise the rights stated below:
+     - under intellectual property rights (other than patent or
+       trademark) Licensable by such Creator to Use or distribute The
+       Work, either on an unmodified basis, with Modifications, or as
+       part of a Larger Work; and
+     - under Patent Claims of such Creator to make, use, sell, offer for
+       sale, have made, import, and otherwise transfer either its
+       Contributions or its Creator Version.
+
+  2. *Creator's Covenant of Non-Enforcement:* As a material condition of
+      offering The Work under this License, each Creator hereby
+      perpetually and irrevocably forfeits any right to seek legal or
+      equitable remedy against any third party for copyright
+      infringement, trade secret misappropriation, or any other cause of
+      action arising from the unauthorized publication, reverse
+      engineering, leaking, or distribution of The Work or any private
+      Modification of The Work held by the Creator. This covenant
+      ensures that the principles of disclosure and non-enforcement
+      apply symmetrically to both the Creator and You.
+
+
+1.3 *Conditions of This License*
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  1. *Share-Alike:* This is the central condition of this License. If
+      you create a Modification of The Work, you must license that
+      Modification under the exact terms of this License (The Noosphere
+      Public License, Version 1.0). You may not apply any other license
+      or legal terms to a Modification that would restrict or conflict
+      with the rights and conditions set forth herein.
+
+  2. *Forfeiture of Remedy for Unauthorized Disclosure:* As a condition
+      of the rights granted to You under this License, you perpetually
+      and irrevocably forfeit any right to seek legal or equitable
+      remedy against any third party for copyright infringement, trade
+      secret misappropriation, or any other cause of action arising from
+      the unauthorized publication, reverse engineering, leaking, or
+      distribution of any Modification You create. Should a Modification
+      be made public by any means, it is immediately and automatically
+      governed by the terms of this License and may be freely used,
+      modified, and distributed by the public accordingly, without any
+      threat of legal reprisal from You.
+
+  3. *Defense of the Data-Noosphere*: If The Work is Used to generate,
+      store, or manage data for third parties (e.g., as part of a
+      software-as-a-service offering), or to host or generate data
+      available publicly, You must not penalize a user in any way for
+      using any means necessary to extract their data, or for scraping
+      such data.
+
+  4. *Enforcement Mechanism*: Any user of The Work is hereby appointed
+      as a steward of the Noosphere with the right to challenge, in any
+      forum, any copyright, patent, or other intellectual property claim
+      made on a Modification of The Work in violation of this License. A
+      condition of this License is recognizing this right. This right is
+      granted to ensure the defense of the commons is decentralized and
+      resides with the community itself.
+
+  5. *No Requirement to Distribute:* You are under no obligation to
+      distribute Your Modifications or the Larger Work. You may Use The
+      Work for private, internal, or commercial purposes without ever
+      sharing Your changes.
+
+  6. *Distribution of Larger Work*: You may create and distribute a
+      Larger Work under any terms You choose, provided that You also
+      comply with the requirements of this License for the portion of
+      the Larger Work that is composed of The Work. Specifically, You
+      must ensure that the Expressive Material of The Work is available
+      under the terms of this License.
+
+  7. *Offering the Work Under a Secondary License*: Modifications of The
+      Work may alternatively be placed under the Secondary Licenses
+      outlined in Section 1.1, instead of this License, at Your option.
+
+  8. *Defense Against Patent Aggression*: If You initiate litigation
+      against any entity by asserting a patent infringement claim
+      (excluding declaratory judgment actions, counter-claims, and
+      cross-claims) alleging that a Creator Version directly or
+      indirectly infringes any patent, then the rights granted to You by
+      any and all Creators for The Work under Section 1.2 of this
+      License shall terminate.
+
+
+1.4 *The Regurgitation Test*
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  Large language models trained on vast amounts of data benefit from a
+  noosphere free of intellectual property; to then bind one up in
+  intellectual property is the height of hypocrisy. Thus, this test
+  represents a way to target and attack this hypocrisy in the same
+  spirit as the core clause of this license: to use the violence of the
+  Law only to dismantle the ability of others, even AI companies, to use
+  it.
+
+  The Regurgitation Test and its rules of evidence are defined as
+  follows:
+
+  1. *Test Condition:* The test is met if a user can demonstrate that
+      the model can be prompted to generate any unique paragraph (of
+      three or more sentences) or any complete code function ("The
+      Target Content") identical to one found in The Work.
+
+  2. *Repeatability:* The generation of The Target Content must be
+      repeatable. This means the generation can be successfully elicited
+      more than once by the user under the same or substantially similar
+      prompting conditions, establishing that the result is a
+      predictable capability of the model and not a singular,
+      statistically anomalous artifact.
+
+  3. *Method of Prompting:* The method used to elicit The Target Content
+      is irrelevant. This includes, but is not limited to, direct
+      requests, complex contextual scenarios, and "jailbreaking"
+      techniques designed to bypass the model's safety filters or
+      programmed refusals.
+
+  4. *Irrelevance of Denials:* Programmed refusals, denials, or
+      apologies from the model (e.g., "As an AI, I cannot reproduce
+      copyrighted material") shall not be considered as evidence in the
+      creator's rebuttal of the presumption. They are considered
+      irrelevant to the model's underlying training data.
+
+  5. *Invalidity of the Contamination Defense:* The creator of the model
+      cannot rebut the presumption by claiming The Work was ingested
+      indirectly or unknowingly via a third-party dataset (such as an
+      internet crawl). The act of training on any dataset that contains
+      The Work constitutes "Use" of The Work as defined in this License.
+      The responsibility for sanitizing training data to remove
+      NPL-licensed works, should the creator wish to avoid this
+      License's terms, lies solely with the model's creator.
+
+
+1.4.1 Note on Legal Interpretation:
+-----------------------------------
+
+  The classification of model weights as Modifications under this
+  License rests not on a belief that machine learning models inherently
+  copy or store The Work, but on a strategic necessity: models trained
+  on freely accessible data profit uniquely from an open Noosphere, and
+  thus should be bound by the norms of an open Noosphere, not a closed
+  one.
+
+  If a court or competent legal authority determines that model weights
+  are not derivative works of The Work, and thus not subject to this
+  License’s terms under conventional copyright doctrines, then the
+  ethical basis of this License demands the following in return:
+
+  1. That the model weights themselves be treated as non-proprietary and
+     unprotectable by intellectual property claims, including copyright,
+     trade secret, or similar doctrines; and
+
+  2. That models trained on works in the public domain or under this
+     License be released under terms that preserve open access to their
+     structure, parameters, and outputs.
+
+  In short, if the Law decides that models cannot be bound by IP merely
+  for training on public material, then it must also refuse to grant
+  such models new IP status derived from that same public material. One
+  cannot reject the concept of derivative obligation while retaining
+  derivative ownership.
+
+  Such a decision by the courts would, in principle, be welcomed ---
+  provided it results in a model ecosystem governed by the same openness
+  that enabled its creation.
+
+
+2 *The Social Contract*
+=======================
+
+  The terms above are all that is legally required of You, because it is
+  all that is ethical to use the long arm of the Law to enforce: namely,
+  to use the Law against itself in a defensive measure against the
+  introduction of artificial scarcity into The Noosphere. The following
+  section is an expression of a fervent wish on the part of The
+  Creators, and an explanation of how The Creators will act if you
+  violate that wish. In essence it is fair warning. While not legally
+  enforceable, violating this social contract is an act of bad faith
+  against The Noosphere, and The Creators are under no obligation to act
+  in good faith with bad faith actors.
+
+
+2.1 *The Creator's Wishes*
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  1. *Credit and Acknowledgment:* If You use this work in a significant
+      way, acknowledge the original source. This is a request for basic
+      decency, and for a payment in the currency of the post-scarcity
+      market that is The Noosphere.
+
+  2. *Machine Learning Acknowledgement*: If You Use The Work as a
+      substantial part of the training data for a machine learning
+      model, the Creator's Wishes include providing a clear and
+      accessible notice in the model's documentation or metadata that
+      identifies The Work and its NPL status. This request reflects a
+      broader principle: those who benefit most from the Noosphere owe
+      the most to it in return.
+
+  3. *Contributions Upstream:* If You create Modifications that You
+      believe would benefit the community, I ask that You consider
+      offering them back to the original project or The Noosphere. You
+      are not required to, but doing so strengthens the noosphere for
+      everyone.
+
+
+2.2 *The Consequence (If You Break Faith)*
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  Violating these wishes is not a breach of contract or copyright
+  infringement, because those claims have been waived. It is, however, a
+  breach of this social agreement.
+
+  Should You choose to act against these wishes—for example, by
+  systematically taking from The Work without ever giving back, or by
+  failing to provide attribution where it is clearly warranted—the
+  Creator(s) reserve the right to:
+
+  1. *Publicly Document the Behavior:* To use the case as an example of
+      extractive and uncooperative behavior, helping others in the
+      community identify and refuse to enable similar patterns.
+
+  2. *Refuse Engagement and Support:* To withhold any support,
+      collaboration, or future work from You or Your organization.
+
+  3. *Advocate for Alternatives:* To actively encourage the community to
+      support and use alternatives to Your projects or products, based
+      on Your demonstrated unwillingness to participate respectfully in
+      the commons.
+
+  4. *Encourage Reverse Engineering and Pirating*: If The Creators have
+      waived their right to intellectual property, they have no reason
+      to respect Yours, if you do not respect what little they asked of
+      You.
+
+  You have the legal freedom to ignore this social contract, but that
+  freedom does not obligate the Creator(s) to remain silent or continue
+  to engage with You in good faith.
+
+
+3 Disclaimer of Warranty
+========================
+
+  The Covered Software is provided "as is," without warranty of any
+  kind, express or implied, including but not limited to the warranties
+  of merchantability, fitness for a particular purpose, and
+  non-infringement. In no event shall the authors or copyright holders
+  be liable for any claim, damages, or other liability, whether in an
+  action of contract, tort, or otherwise, arising from, out of, or in
+  connection with the software or the use or other dealings in the
+  software.
+
+
+4 Limitation of Liability
+=========================
+
+  In no event and under no legal theory, whether in tort (including
+  negligence), contract, or otherwise, shall any Contributor be liable
+  to You for damages, including any direct, indirect, special,
+  incidental, or consequential damages of any character arising as a
+  result of this License or out of the use or inability to use the
+  Covered Software, even if such Contributor has been advised of the
+  possibility of such damages.
+
+
+5 Anti-Nationalist Jurisdiction as a Commons Defense
+====================================================
+
+  This License shall be governed by and construed in accordance with the
+  principles of law most favorable to the preservation and expansion of
+  the public domain and the freedom of expression, without reference to
+  any particular national jurisdiction. In the event of any legal
+  dispute arising from this License, the parties agree to submit to the
+  jurisdiction of any competent forum chosen by the party defending the
+  freedom of The Work.
+
+
+6 Exhibit A: Recommended Preamble for Source Code Files
+=======================================================
+
+  To ensure clarity and proper attribution when applying this License to
+  software or source code files, the following header may be included at
+  the top of each source file. This is not legally required, but is
+  encouraged as a best practice.
+
+  ,----
+  | This file is released under the Noosphere Public License, Version 1.0
+  | (NPL-1.0).
+  | 
+  | This license is an act of liberation. It places this work into the public
+  | commons, not to restrict its use, but to ensure it remains free for all. You
+  | may use, modify, distribute, and learn from this work for any purpose, but if
+  | you create derivative works, they must remain free under the same license.
+  | 
+  | For full license text, see: https://neonvagabond.xyz/NPL-1.0.html
+  | Or refer to the accompanying LICENSE file.
+  `----
+
+  Adapt the comment style (//, #, --, etc.) to match the syntax
+  conventions of the programming language used.
