@@ -102,7 +102,8 @@ class ConvertWorker:
                     int(self.app.margin_var.get() * sample_rate / 1000),  # Convert ms to samples based on sample rate
                     speed,  # Pass speed from UI slider
                     sample_rate,  # Pass sample rate from UI spinner
-                    len(self.pipelines)  # Pass the actual number of pipelines we have
+                    len(self.pipelines),  # Pass the actual number of pipelines we have
+                    self.app.max_chunk_length_var.get()  # Pass max chunk length from UI spinner
             ):
                 # Check if abort was requested
                 if self.app.app_state.is_aborted:

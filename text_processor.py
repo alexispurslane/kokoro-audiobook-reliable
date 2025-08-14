@@ -155,7 +155,7 @@ def split_long_sentence(sentence, max_chars=250):
     return split_into_word_chunks_nltk(sentence, max_chars)
 
 
-def split_and_prepare_text(text):
+def split_and_prepare_text(text, max_chunk_length=200):
     """Split text into chunks suitable for Kokoro processing"""
     # Replace special characters with their word equivalents
     # This helps with TTS pronunciation
@@ -220,8 +220,8 @@ def split_and_prepare_text(text):
             
             # Split long sentences into sub-chunks
             sentence_chunks = [sentence]
-            if len(sentence) > 200:
-                sentence_chunks = split_long_sentence(sentence)
+            if len(sentence) > max_chunk_length:
+                sentence_chunks = split_long_sentence(sentence, max_chars=max_chunk_length)
                         
             # Add sentence chunks to main chunks list
             chunks.extend(sentence_chunks)

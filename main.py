@@ -747,6 +747,19 @@ class TextToSpeechApp:
         # Add callback to update output file extension when MP3 checkbox is toggled
         self.convert_to_mp3_var.trace_add('write', self._on_mp3_checkbox_changed)
         
+        # Max chunk length setting
+        ttk.Label(settings_frame, text="Max Chunk Length (chars):").pack(anchor="w", pady=(10, 0))
+        
+        chunk_length_frame = ttk.Frame(settings_frame)
+        chunk_length_frame.pack(fill="x", pady=(5, 0))
+        
+        self.max_chunk_length_var = tk.IntVar(value=250)
+        self.max_chunk_length_spinbox = ttk.Spinbox(chunk_length_frame, from_=50, to=500, textvariable=self.max_chunk_length_var, width=10)
+        self.max_chunk_length_spinbox.pack(side="left")
+        ToolTip(self.max_chunk_length_spinbox, "Maximum number of characters per text chunk. Smaller chunks are more reliable but may create more pauses. Larger chunks are less reliable but flow better. Default is 200 characters.")
+        
+        ttk.Label(chunk_length_frame, text="(50-500)").pack(side="left", padx=(5, 0))
+        
     def create_progress_section(self, parent):
         """Create the progress section with status label, timer, and progress bar"""
         # Progress section
@@ -1055,6 +1068,8 @@ class TextToSpeechApp:
                     self.batch_count_var.set(last_settings.get("batch_count", 1))
                 if hasattr(self, 'language_var') and self.language_var:
                     self.language_var.set(last_settings.get("language", "American English"))
+                if hasattr(self, 'max_chunk_length_var') and self.max_chunk_length_var:
+                    self.max_chunk_length_var.set(last_settings.get("max_chunk_length", 200))
                 
                 # Update UI elements that depend on these settings
                 # This will be done after widget creation
@@ -1079,7 +1094,8 @@ class TextToSpeechApp:
                 "threshold": self.threshold_var.get(),
                 "margin": self.margin_var.get(),
                 "batch_count": self.batch_count_var.get(),
-                "language": self.language_var.get()
+                "language": self.language_var.get(),
+                "max_chunk_length": self.max_chunk_length_var.get()
             }
         }
         

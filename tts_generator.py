@@ -75,14 +75,14 @@ def process_chunk(pipeline, chunk, voice, threshold=0.06, margin=10, speed=1.0, 
     return None
 
 
-def generate_long(pipelines, text, current_soundfile, output_path, voice='af_heart', start_time=None, start_chunk_idx=0, sf_mode='w', threshold=0.06, margin=10, speed=1.0, sample_rate=24000, batch_count=1):
+def generate_long(pipelines, text, current_soundfile, output_path, voice='af_heart', start_time=None, start_chunk_idx=0, sf_mode='w', threshold=0.06, margin=10, speed=1.0, sample_rate=24000, batch_count=1, max_chunk_length=200):
     """Generate long-form speech with resume capability and parallel batch processing"""
     # Get lockfile path
     lockfile_path = output_path + ".lock"
     print(f"Batch count: {batch_count}")
     
     # Set initial state
-    sentence_chunks = split_and_prepare_text(text)
+    sentence_chunks = split_and_prepare_text(text, max_chunk_length)
     print("\n".join(sentence_chunks))
     
     total_chunks = len(sentence_chunks)
