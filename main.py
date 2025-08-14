@@ -27,6 +27,8 @@ import tempfile
 import simpleaudio as sa
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+import subprocess
+import shutil
 
 # Try to import tkinterdnd2
 try:
@@ -148,7 +150,11 @@ class DnDEntry(ttk.Entry):
                 
             if file_paths:
                 file_path = file_paths[0]  # Take the first file
-                if os.path.isfile(file_path) and file_path.endswith('.txt'):
+                # Check if file has a supported extension
+                supported_extensions = {'.txt', '.epub', '.html', '.htm', '.pdf', '.docx'}
+                file_ext = os.path.splitext(file_path)[1].lower()
+                
+                if os.path.isfile(file_path) and file_ext in supported_extensions:
                     print(f"Dropped input file: {file_path}")
                     self.app.input_path_var.set(file_path)
                     
@@ -162,7 +168,7 @@ class DnDEntry(ttk.Entry):
                     self.app._pull_resume_info()
                     self.app.update_recent_files(file_path)
                 else:
-                    messagebox.showerror("Error", "Please drop a valid text file (.txt)")
+                    messagebox.showerror("Error", "Please drop a valid file (txt, epub, html, htm, pdf, docx)")
 class AppState:
     """Atomic application state manager with automatic worker waiting"""
     IDLE = "IDLE"
@@ -807,8 +813,16 @@ class TextToSpeechApp:
         """Open file dialog to select input text file"""
         print("Opening file dialog for input file...")
         file_path = filedialog.askopenfilename(
-            title="Select Input Text File",
-            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+            title="Select Input File",
+            filetypes=[
+                ("All supported files", "*.txt *.epub *.html *.htm *.pdf *.docx"),
+                ("Text files", "*.txt"),
+                ("EPUB files", "*.epub"),
+                ("HTML files", "*.html *.htm"),
+                ("PDF files", "*.pdf"),
+                ("Word documents", "*.docx"),
+                ("All files", "*.*")
+            ]
         )
         if file_path:
             print(f"Selected input file: {file_path}")
@@ -827,20 +841,73 @@ class TextToSpeechApp:
             self._pull_resume_info()
             self.update_recent_files(file_path)
             
+    def is_pandoc_available(self):
+        """Check if pandoc is available in the system"""
+        return shutil.which("pandoc") is not None
+    
+    def convert_to_text_with_pandoc(self, file_path):
+        """Convert EPUB, HTML, PDF, or DocX files to plain text using pandoc"""
+        try:
+            # Check if pandoc is available
+            if not self.is_pandoc_available():
+                raise Exception("Pandoc is not installed or not available in PATH")
+            
+            # Determine the format based on file extension
+            ext = os.path.splitext(file_path)[1].lower()
+            if ext == '.epub':
+                format_arg = 'epub'
+            elif ext == '.html' or ext == '.htm':
+                format_arg = 'html'
+            elif ext == '.pdf':
+                format_arg = 'pdf'
+            elif ext == '.docx':
+                format_arg = 'docx'
+            else:
+                # For plain text files, no conversion needed
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    return file.read()
+            
+            # Run pandoc to convert to plain text
+            result = subprocess.run([
+                'pandoc',
+                '--from', format_arg,
+                '--to', 'plain',
+                '--wrap', 'none',  # Prevent line wrapping
+                file_path
+            ], capture_output=True, text=True, check=True)
+            
+            return result.stdout
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"Pandoc conversion failed: {e.stderr}")
+        except FileNotFoundError:
+            raise Exception("Pandoc is not installed or not available in PATH")
+        except Exception as e:
+            raise Exception(f"Error converting file: {str(e)}")
+
     def load_file_content(self, file_path):
         """Load the content of a text file into the editor"""
         try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-                # Clean unwanted unicode characters while preserving multilingual text
-                content = clean_unicode_text(content)
-                self.editor_text.delete(1.0, tk.END)
-                self.editor_text.insert(1.0, content)
-                self.editor_status_var.set(f"Loaded: {os.path.basename(file_path)}")
-                self.text_editor_modified = False
-                self.editor_text.edit_modified(False)
-                # Store original content for newline replacement feature
-                self.original_text_content = content
+            # Get file extension
+            ext = os.path.splitext(file_path)[1].lower()
+            
+            # Convert file to text if it's not already plain text
+            if ext in ['.epub', '.html', '.htm', '.pdf', '.docx']:
+                content = self.convert_to_text_with_pandoc(file_path)
+            else:
+                # For plain text files, read directly
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    content = file.read()
+            
+            # Clean unwanted unicode characters while preserving multilingual text
+            content = clean_unicode_text(content)
+            
+            self.editor_text.delete(1.0, tk.END)
+            self.editor_text.insert(1.0, content)
+            self.editor_status_var.set(f"Loaded: {os.path.basename(file_path)}")
+            self.text_editor_modified = False
+            self.editor_text.edit_modified(False)
+            # Store original content for newline replacement feature
+            self.original_text_content = content
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load file content:\n{str(e)}")
             
@@ -929,7 +996,7 @@ class TextToSpeechApp:
                     self.editor_status_var.set(f"Loaded: {os.path.basename(file_path)}")
                 else:
                     self.editor_status_var.set("No file loaded")
-                
+
     def browse_output_file(self):
         """Open file dialog to select output audio file"""
         print("Opening file dialog for output file...")

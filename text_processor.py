@@ -1,6 +1,6 @@
 import re
 import nltk
-from nltk.tokenize import sent_tokenize
+from nltk.tokenize import sent_tokenize, RegexpTokenizer
 import unicodedata
 
 def is_unwanted_unicode(char):
@@ -53,35 +53,68 @@ def clean_unicode_text(text):
     cleaned_text = ''.join(char for char in text if not is_unwanted_unicode(char))
     return cleaned_text
 
-def split_at_breakpoints(chunk, breakpoints):
-    """Split a chunk at natural breakpoints (commas, semicolons, etc.)"""
-    # Try each breakpoint type
-    for breakpoint_char in breakpoints:
-        if breakpoint_char in chunk:
-            # Split at this breakpoint
-            parts = chunk.split(breakpoint_char, 1)
-            if len(parts) == 2:
-                # Reconstruct the parts with the breakpoint character
-                part1 = parts[0] + breakpoint_char
-                part2 = parts[1]
-                
-                # If both parts are non-empty, return the two parts
-                if part1.strip() and part2.strip():
-                    return part1.strip(), part2.strip()
-                
-    return None, None
+def split_at_breakpoints_nltk(chunk, max_chars=250):
+    """Split a chunk at natural breakpoints using NLTK's RegexpTokenizer"""
+    # Create a tokenizer that splits on common clause separators
+    # This pattern matches sequences that end with clause separators
+    clause_tokenizer = RegexpTokenizer(r'[^\n,;:]+(?:[,;:]|$)')
+    
+    # Tokenize the chunk into clauses
+    clauses = clause_tokenizer.tokenize(chunk)
+    
+    # If we only have one clause or the chunk is short enough, return as is
+    if len(clauses) <= 1 or len(chunk) <= max_chars:
+        return [chunk]
+    
+    # Try to combine clauses into chunks without exceeding max_chars
+    chunks = []
+    current_chunk = ""
+    
+    for clause in clauses:
+        # Clean up the clause by removing extra whitespace
+        clause = clause.strip()
+        
+        # Test adding this clause to current chunk
+        test_chunk = (current_chunk + " " + clause).strip() if current_chunk else clause
+        
+        # If adding this clause would exceed the limit and we already have content
+        if len(test_chunk) > max_chars and current_chunk:
+            # Save the current chunk
+            chunks.append(current_chunk.strip())
+            # Start a new chunk with this clause
+            current_chunk = clause
+        else:
+            # Add this clause to the current chunk
+            current_chunk = test_chunk
+        
+    
+    # Add the last chunk if it exists
+    if current_chunk:
+        chunks.append(current_chunk.strip())
 
+    return chunks
 
-def split_into_word_chunks(chunk, max_chars=200):
-    """Split a chunk into smaller chunks based on words"""
-    # Split chunk into words
-    words = chunk.split()
+def split_into_word_chunks_nltk(chunk, max_chars=200):
+    """Split a chunk into smaller chunks based on words using NLTK"""
+    try:
+        # Use NLTK's word tokenizer for better word splitting
+        from nltk.tokenize import word_tokenize
+        words = word_tokenize(chunk)
+    except:
+        # Fallback to simple split if NLTK tokenizer is not available
+        words = chunk.split()
+        
     current_subchunk = ""
     subchunks = []
     
     for word in words:
-        test_subchunk = f"{current_subchunk} {word}".strip()
-        if len(test_subchunk) <= max_chars or not current_subchunk:
+        # For punctuation marks (single characters), don't add a space before them
+        if len(word) == 1 and word in [",", ";", ":", "—", "."]:
+            test_subchunk = f"{current_subchunk}{word}".strip()
+        else:
+            test_subchunk = f"{current_subchunk} {word}".strip()
+            
+        if (len(test_subchunk) <= max_chars or not current_subchunk) or len(word) == 1:
             current_subchunk = test_subchunk
         else:
             # If we have a current subchunk, save it
@@ -96,49 +129,30 @@ def split_into_word_chunks(chunk, max_chars=200):
         
     return subchunks
 
-
 def split_long_sentence(sentence, max_chars=250):
     """Split a long sentence into smaller chunks without adding pauses between them"""
     if len(sentence) <= max_chars:
         return [sentence]
     
-    # Split at natural breakpoints first (commas, semicolons, etc.)
-    breakpoints = [';', ':', '–', '—', ',', ' and ', ' or ']
+    # First, try to split using NLTK's regexp-based clause splitting
+    clause_chunks = split_at_breakpoints_nltk(sentence, max_chars)
     
-    # Start with the whole sentence as one chunk
-    chunks = [sentence]
-    
-    # Process each chunk to split at natural breakpoints
-    i = 0
-    while i < len(chunks):
-        chunk = chunks[i]
-        
-        # If this chunk is still too long, try to split at natural breakpoints
-        if len(chunk) > max_chars:
-            # Try to split at natural breakpoints
-            part1, part2 = split_at_breakpoints(chunk, breakpoints)
-            
-            if part1 and part2:
-                # Remove the original chunk
-                chunks.pop(i)
-                # Insert the two new chunks (in reverse order to maintain position)
-                chunks.insert(i, part2)
-                chunks.insert(i, part1)
-                # Go back to process the first new chunk
-                i -= 1
+    # If the clause splitting was successful and didn't just return the original sentence
+    if len(clause_chunks) > 1 or (len(clause_chunks) == 1 and len(clause_chunks[0]) <= max_chars):
+        # Check if any chunks are still too long
+        final_chunks = []
+        for chunk in clause_chunks:
+            if len(chunk) > max_chars:
+                # If a clause is still too long, split it further using word-based splitting
+                word_chunks = split_into_word_chunks_nltk(chunk, max_chars)
+                final_chunks.extend(word_chunks)
             else:
-                # If no natural breakpoint was found, fall back to word-based splitting
-                subchunks = split_into_word_chunks(chunk, max_chars)
-                
-                # Replace the original chunk with the subchunks
-                chunks.pop(i)
-                # Insert subchunks in reverse order to maintain position
-                for subchunk in reversed(subchunks):
-                    chunks.insert(i, subchunk)
-                i += len(subchunks) - 1  # Adjust index for the new chunks
-        i += 1
+                final_chunks.append(chunk)
         
-    return chunks
+        return final_chunks
+    
+    # If clause splitting didn't help, fall back to word-based splitting
+    return split_into_word_chunks_nltk(sentence, max_chars)
 
 
 def split_and_prepare_text(text):

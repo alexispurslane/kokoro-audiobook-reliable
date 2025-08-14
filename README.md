@@ -12,7 +12,7 @@ A graphical user interface for the Kokoro text-to-speech system with advanced fe
 - **51 different voice options with quality grades** to help you choose the best voice for your needs, with the ability to control voice speed and play voice samples
 - **Progress tracking** with real-time status updates, a propotional progress bar, and estimated time remaining
 - **Support for MP3 output with specified bitrate** so that when you get a final WAV file, you can easily convert it to something smaller and more efficient
-- **Advanced text processing** with automatic sentence splitting and long sentence handling
+- **Advanced NLTK-based text processing** with automatic sentence splitting and long sentence handling
 - **Exception-proof resume capability** so that you never lose progress on a long running project!
 - **Pause and stop functionality** that allows you to resume later or stop without saving progress, based on the same resume capability features
 - **Real-time console output** showing detailed processing information
@@ -35,7 +35,10 @@ This is so seamless that it even allows the user to manually *choose* to pause c
 Thanks to the fact that all audio is written directly to the output file as soon as it is synthesized, it can immediately be deleted from memory, meaning that instead of monotonically rising memory usage that may eventually lead to an out of memory error or the computer crashing --- which has happened to me with mlx-audio --- this app consistently only uses about 400MB of memory, and that does not rise over time.
 
 ### Long sentence handling
-Kokoro-82M text-to-speech degrades after ~250 characters; this causes problems for existing Kokoro TTS solutions, which split by sentence, but don't actually check to make sure sentences are small enough for it to process before feeding them into the model: long sentences can drop words or become whispers at the end. I implemented a recursive algorithm that first splits text at natural syntactic boundaries (semicolons, colons, emdashes, commas, conjunctions), then falls back to greedy word fitting if needed, to ensure that all chunks fed to Kokoro-82M are always below the character limit. After generating audio for each chunk, I then reassemble them with precisely trimmed silence, insert sentence pauses, and add double pauses at paragraph breaks, resulting in clear, accurate audio.
+
+Kokoro-82M text-to-speech degrades after ~250 characters; this causes problems for existing Kokoro TTS solutions, which split by sentence, but don't actually check to make sure sentences are small enough for it to process before feeding them into the model: long sentences can drop words or become whispers at the end. This made serious audiobook generation with Kokoro, especially for dense philosophical audiobooks, a no-go.
+
+To resolve this, I implemented an algorithm that first splits text by sentences using NLTK's punct sentence tokenizer, and then if those sentences are too long, splits the sentence into clauses at natural boundaries using NLTK's RegexpTokenizer, and then combines those sub-sentences greedily in order maintain natural prosidy. Then, if any of the remaining sub-sentence chunks are still too long due to a lack of natural boundaries, I use NLTK's word tokenizer to split them at word boundaries to maintain within the maximum length, although I fuse punctuation onto the end of each run of words (if there is punctuation) because that seems to make Kokoro's prosody best.
 
 ### Queuing
 
@@ -68,6 +71,7 @@ uv run main.py
 - Python 3.10 or higher (but less than 3.13)
 - uv (for dependency management)
 - ffmpeg <= 7.0
+- pandoc
 
 ## How to Use
 
