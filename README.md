@@ -6,22 +6,21 @@ A graphical user interface for the Kokoro text-to-speech system with advanced fe
 
 ## Features
 
-- **Fast and high quality** text to speech conversion, thanks to Kokoro-82M
-- **Easy-to-use cross-platform GUI with native look-and-feel** for converting text files to high-quality speech, including features like extensive tooltips and drag and drop functionality.
-- **Multilingual support** with voices in 9 languages including American English, British English, Japanese, Mandarin Chinese, Spanish, French, Hindi, Italian, and Brazilian Portuguese
-- **51 different voice options with quality grades** to help you choose the best voice for your needs, with the ability to control voice speed and play voice samples
-- **Progress tracking** with real-time status updates, a propotional progress bar, and estimated time remaining
-- **Support for MP3 output with specified bitrate** so that when you get a final WAV file, you can easily convert it to something smaller and more efficient
-- **Advanced NLTK-based text processing** with automatic sentence splitting and long sentence handling
-- **Exception-proof resume capability** so that you never lose progress on a long running project!
-- **Pause and stop functionality** that allows you to resume later or stop without saving progress, based on the same resume capability features
-- **Real-time console output** showing detailed processing information
-- **An advanced queuing system** that allows you to queue up multiple texts to be converted to speech audio, and monitor their progress, as well as individually remove or stop them, as well as pause the queue even mid-conversion of a text and then resume right where you left off later
-- **Parallel batch processing** that uses threads to process multiple chunks simultaneously, dramatically increasing conversion speed - going from 1 to 5 batches reduced conversion time from 2 minutes 50 seconds to just 1 minute 52 seconds! Note that increasing batch size has logarithmically diminishing returns, as going from 5 to 8 batches only reduced the conversion time by another 20 seconds.
+- **Fast and high quality** text to speech conversion with Kokoro-82M
+- **Easy-to-use cross-platform GUI** with tooltips, drag and drop, and automatic profile saving
+- **Multilingual support** with 51 voices across 9 languages
+- **Advanced text processing** with NLTK and LLM capabilities
+- **Exception-proof resume capability** so you never lose progress
+- **Pause and stop functionality** with seamless resumption
+- **Real-time progress tracking** with status updates and estimated time remaining
+- **MP3 output support** with customizable bitrate
+- **Advanced queuing system** for batch processing multiple texts
+- **Parallel batch processing** for dramatically faster conversion
+- **Automatic file conversion** for EPUB, HTML, DOCX, and PDF files
 
 ## Unique Features
 
-The reason I made this app instead of using one of the many, many existing options, was that they all lacked two key features that my version has:
+The reason I made this app instead of using one of the many, many existing options, was that they all lacked key features that my version has:
 
 ### Resume capability
 As chunks are converted, this program streams the chunk audio to an uncompressed wav file, so that if a sigterm or sigint is received, or the user quits the app, hits pause, or even if an exception is raised, all that needs to be done to save the progress achieved up until that point is to save a lockfile detailing which chunk the conversion left off at and what the conversion settings were, and then safely close the sound file.
@@ -34,18 +33,32 @@ This is so seamless that it even allows the user to manually *choose* to pause c
 
 Thanks to the fact that all audio is written directly to the output file as soon as it is synthesized, it can immediately be deleted from memory, meaning that instead of monotonically rising memory usage that may eventually lead to an out of memory error or the computer crashing --- which has happened to me with mlx-audio --- this app consistently only uses about 400MB of memory, and that does not rise over time.
 
-### Long sentence handling
+### Advanced text processing with NLTK and LLMs
 
-Kokoro-82M text-to-speech degrades after ~250 characters; this causes problems for existing Kokoro TTS solutions, which split by sentence, but don't actually check to make sure sentences are small enough for it to process before feeding them into the model: long sentences can drop words or become whispers at the end. This made serious audiobook generation with Kokoro, especially for dense philosophical audiobooks, a no-go.
+This application provides sophisticated text processing capabilities using both rule-based NLTK algorithms and cutting-edge small language models:
 
-To resolve this, I implemented an algorithm that first splits text by sentences using NLTK's punct sentence tokenizer, and then if those sentences are too long, splits the sentence into clauses at natural boundaries using NLTK's RegexpTokenizer, and then combines those sub-sentences greedily in order maintain natural prosidy. Then, if any of the remaining sub-sentence chunks are still too long due to a lack of natural boundaries, I use NLTK's word tokenizer to split them at word boundaries to maintain within the maximum length, although I fuse punctuation onto the end of each run of words (if there is punctuation) because that seems to make Kokoro's prosody best.
+**NLTK-based processing includes:**
+- Intelligent sentence splitting with length-aware chunking to work within Kokoro's 250-character limitations
+- Multi-stage text segmentation: sentences → clauses → words with smart punctuation handling
+- Unicode normalization and symbol conversion using official Unicode specifications
+- Line unwrapping and paragraph joining with smart heuristics
+- Extensive text cleaning while preserving multilingual content
+- Live preview of all transformations
+
+**LLM-powered processing features:**
+- Optional conversion of LaTeX mathematical formulas and Markdown tables to natural language descriptions using Phi-4-mini-instruct
+- Threaded processing to prevent UI blocking during conversion
+- Cached results for efficient toggling between original and converted text
+- Manual control over when to apply these time-intensive transformations
+- Clear visual indication of cached conversion status
+
+These combined capabilities ensure that complex documents with mathematical content or tables can be properly converted to speech, while maintaining high quality and natural prosody.
 
 ### Queuing
 
 Since converting a text, even with Kokoro-82M on a relatively fast machine, can take some time, I don't want to have to manually intervene to load the next one each time. As a result, I built a serviceable queuing system workflow (which is optional, to maintain ergonomics for single files) that allows you to add to the queue, delete from the queue, clear the queue, and pause/resume the whole queue (even if you do it in the middle of converting a specific file, thanks to the resume capability!), as well as giving you status updates on the progress of each queue item:
 
 ![](./queue_screenshot.png)
-
 ## Installation
 
 1. Clone the repository:

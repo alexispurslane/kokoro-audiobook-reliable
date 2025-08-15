@@ -3,7 +3,7 @@ import os
 import time
 import soundfile as sf
 import numpy as np
-from text_processor import split_and_prepare_text
+from text_processor import split_text
 import threading
 
 def trim_silence(audio_data, threshold=0.06, margin=100):
@@ -82,7 +82,7 @@ def generate_long(pipelines, text, current_soundfile, output_path, voice='af_hea
     print(f"Batch count: {batch_count}")
     
     # Set initial state
-    sentence_chunks = split_and_prepare_text(text, max_chunk_length)
+    sentence_chunks = split_text(text, max_chunk_length)
     print("\n".join(sentence_chunks))
     
     total_chunks = len(sentence_chunks)

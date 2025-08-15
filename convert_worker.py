@@ -40,11 +40,11 @@ class ConvertWorker:
             print(f"Error converting to MP3: {e}")
             raise
         
-    def convert_file(self, input_path, output_path, text_content=None):
+    def convert_file(self, text_content, output_path):
         output_path = os.path.splitext(output_path)[0]+'.wav' # in case the final destination file is mp3, we still wanna generate an intermediate wav 
         """Convert a single text file to speech"""
         try:
-            print(f"Starting conversion worker for {input_path}")
+            print(f"Starting conversion worker")
             # Record start time
             start_time = time.time()
             self.app.start_time = start_time
@@ -62,23 +62,12 @@ class ConvertWorker:
             voice = voice_with_grade.split(" (")[0]  # Extract voice identifier before the grade
                         
             # Use provided text content or read from file
-            if text_content is not None:
-                text = text_content.strip() + f"""
+            text = text_content.strip() + f"""
 
-                We have now reached the end of your audiobook. This was read to you by Kokoro-82M using the {voice} voice, through Alexis Dumas's TTS program designed for long texts and reliability.
+We have now reached the end of your audiobook. This was read to you by Kokoro-82M using the {voice} voice, through Alexis Dumas's TTS program designed for long texts and reliability.
 
-                Thank you!
-                """
-            else:
-                # Read text file
-                with open(input_path, 'r', encoding='utf-8') as f:
-                    text = f.read().strip() + f"""
-
-                    We have now reached the end of your audiobook. This was read to you by Kokoro-82M using the {voice} voice, through Alexis Dumas's TTS program designed for long texts and reliability.
-
-                    Thank you!
-                    """
-                        
+Thank you!
+"""
             # Get speed and sample rate from UI
             speed = self.app.speed_var.get()
             sample_rate = self.app.sample_rate_var.get()

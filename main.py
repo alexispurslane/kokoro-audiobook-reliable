@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import atexit
+import re
 
 # Check if we're already running with correct FFmpeg path and restart if needed
 ffmpeg_lib_path = '/opt/homebrew/opt/ffmpeg@6/lib'
@@ -47,7 +48,8 @@ from typing import Optional
 from tts_generator import process_chunk, generate_long
 from queue_worker import QueueWorker
 from convert_worker import ConvertWorker
-from text_processor import clean_unicode_text
+from text_processor import clean_unicode_text, apply_text_transformations
+from voices import VOICE_DATA
 
 class ToolTip:
     """A tooltip class for tkinter widgets based on the GeeksforGeeks approach"""
@@ -151,7 +153,7 @@ class DnDEntry(ttk.Entry):
             if file_paths:
                 file_path = file_paths[0]  # Take the first file
                 # Check if file has a supported extension
-                supported_extensions = {'.txt', '.epub', '.html', '.htm', '.pdf', '.docx'}
+                supported_extensions = {'.txt', '.epub', '.html', '.htm', '.pdf', '.docx', '.md', '.rtf'}
                 file_ext = os.path.splitext(file_path)[1].lower()
                 
                 if os.path.isfile(file_path) and file_ext in supported_extensions:
@@ -168,7 +170,7 @@ class DnDEntry(ttk.Entry):
                     self.app._pull_resume_info()
                     self.app.update_recent_files(file_path)
                 else:
-                    messagebox.showerror("Error", "Please drop a valid file (txt, epub, html, htm, pdf, docx)")
+                    messagebox.showerror("Error", "Please drop a valid file (txt, epub, html, htm, pdf, docx, md, rtf)")
 class AppState:
     """Atomic application state manager with automatic worker waiting"""
     IDLE = "IDLE"
@@ -405,11 +407,59 @@ class TextToSpeechApp:
             variable=self.replace_newlines_var,
             command=self.toggle_newline_replacement
         )
-        self.replace_newlines_checkbox.pack(side="left", padx=(0, 10))
+        self.replace_newlines_checkbox.pack(anchor="w", pady=(0, 5))
         ToolTip(self.replace_newlines_checkbox, "Replace single newlines with spaces while preserving double newlines. Useful for cleaning up text formatting.")
         
+        # Checkbox for merging accidentally split paragraphs
+        self.merge_paragraphs_var = tk.BooleanVar(value=False)
+        self.merge_paragraphs_checkbox = ttk.Checkbutton(
+            editor_controls_frame,
+            text="Merge accidentally split paragraphs",
+            variable=self.merge_paragraphs_var,
+            command=self.toggle_merge_paragraphs
+        )
+        self.merge_paragraphs_checkbox.pack(anchor="w", pady=(0, 5))
+        ToolTip(self.merge_paragraphs_checkbox, "Merge paragraphs that were accidentally split. Detects lines ending without punctuation, followed by two newlines, followed by a line not starting with capital/number/dash.")
+        
+        # Checkbox for converting math formulas and tables to verbal descriptions
+        self.convert_math_var = tk.BooleanVar(value=False)
+        self.convert_math_checkbox = ttk.Checkbutton(
+            editor_controls_frame,
+            text="Convert math formulas and tables to verbal descriptions using AI",
+            variable=self.convert_math_var,
+            command=self.toggle_math_conversion
+        )
+        self.convert_math_checkbox.pack(anchor="w", pady=(0, 5))
+        ToolTip(self.convert_math_checkbox, "Use microsoft/Phi-4-mini-instruct to convert mathematical formulas and tables into verbal descriptions for better TTS conversion.")
+        
+        # Store converted text for reversible conversion
+        self.converted_text_content = ""
+                
+        # Search controls
+        search_frame = ttk.Frame(editor_controls_frame)
+        search_frame.pack(fill="x", pady=(0, 5))
+        
+        ttk.Label(search_frame, text="Search:").pack(side="left")
+        
+        self.search_var = tk.StringVar()
+        self.search_entry = ttk.Entry(search_frame, textvariable=self.search_var, width=20)
+        self.search_entry.pack(side="left", padx=(5, 5))
+        ToolTip(self.search_entry, "Enter text to search for in the editor")
+        
+        self.search_btn = ttk.Button(search_frame, text="Find", command=self.find_text)
+        self.search_btn.pack(side="left", padx=(0, 5))
+        ToolTip(self.search_btn, "Find the next occurrence of the search text")
+        
+        self.search_prev_btn = ttk.Button(search_frame, text="Find Previous", command=self.find_previous_text)
+        self.search_prev_btn.pack(side="left")
+        ToolTip(self.search_prev_btn, "Find the previous occurrence of the search text")
+        
+        # Bind Enter key to search
+        self.search_entry.bind('<Return>', lambda event: self.find_text())
+        self.search_entry.bind('<KP_Enter>', lambda event: self.find_text())
+        
         self.save_editor_btn = ttk.Button(editor_controls_frame, text="Save to File", command=self.save_editor_content)
-        self.save_editor_btn.pack(side="left")
+        self.save_editor_btn.pack(anchor="w")
         ToolTip(self.save_editor_btn, "Save the edited content back to the original file.")
         
         # Bind Ctrl+S to save
@@ -453,29 +503,13 @@ class TextToSpeechApp:
         queue_frame = ttk.LabelFrame(parent, text="Queue", padding="10")
         queue_frame.pack(fill="both", expand=True, pady=(0, 10))
         
-        # Queue control buttons
-        queue_control_frame = ttk.Frame(queue_frame)
-        queue_control_frame.pack(fill="x", pady=(0, 10))
-        
-        self.add_to_queue_btn = ttk.Button(queue_control_frame, text="Add to Queue", command=self.add_to_queue)
-        self.add_to_queue_btn.pack(side="left", padx=(0, 5))
-        ToolTip(self.add_to_queue_btn, "Add the current input/output file pair to the conversion queue. Items will be processed sequentially, one at a time.")
-        
-        self.clear_queue_btn = ttk.Button(queue_control_frame, text="Clear Queue", command=self.clear_queue)
-        self.clear_queue_btn.pack(side="left", padx=(0, 5))
-        ToolTip(self.clear_queue_btn, "Remove all items from the conversion queue.")
-        
-        self.delete_selected_btn = ttk.Button(queue_control_frame, text="Delete Selected", command=self.delete_selected_queue_item)
-        self.delete_selected_btn.pack(side="left")
-        ToolTip(self.delete_selected_btn, "Remove the selected item from the conversion queue.")
-        
-        # Queue table
-        queue_table_container = ttk.Frame(queue_frame)
-        queue_table_container.pack(fill="both", expand=True)
+        # Create a main container for the queue table and buttons
+        queue_main_container = ttk.Frame(queue_frame)
+        queue_main_container.pack(fill="both", expand=True)
         
         # Create treeview for queue items
         columns = ("input_file", "output_file", "status")
-        self.queue_tree = ttk.Treeview(queue_table_container, columns=columns, show="headings", height=6)
+        self.queue_tree = ttk.Treeview(queue_main_container, columns=columns, show="headings", height=6)
         
         # Define column headings and widths
         self.queue_tree.heading("input_file", text="Input File")
@@ -487,13 +521,28 @@ class TextToSpeechApp:
         self.queue_tree.column("status", width=100)
         
         # Add scrollbar
-        queue_scrollbar = ttk.Scrollbar(queue_table_container, orient="vertical", command=self.queue_tree.yview)
+        queue_scrollbar = ttk.Scrollbar(queue_main_container, orient="vertical", command=self.queue_tree.yview)
         self.queue_tree.configure(yscrollcommand=queue_scrollbar.set)
         
-        self.queue_tree.pack(side="left", fill="both", expand=True)
-        ToolTip(self.queue_tree, "Queue of files to be converted. Shows input file, output file, and conversion status. Processing happens sequentially with automatic resuming on failure.")
+        # Queue control buttons (positioned beside the queue)
+        queue_control_frame = ttk.Frame(queue_main_container)
+        queue_control_frame.pack(side="right", fill="y", padx=(10, 0))
         
-        queue_scrollbar.pack(side="right", fill="y")
+        self.add_to_queue_btn = ttk.Button(queue_control_frame, text="Add to Queue", command=self.add_to_queue, width=12)
+        self.add_to_queue_btn.pack(side="top", pady=(0, 5))
+        ToolTip(self.add_to_queue_btn, "Add the current input/output file pair to the conversion queue. Items will be processed sequentially, one at a time.")
+        
+        self.clear_queue_btn = ttk.Button(queue_control_frame, text="Clear Queue", command=self.clear_queue, width=12)
+        self.clear_queue_btn.pack(side="top", pady=(0, 5))
+        ToolTip(self.clear_queue_btn, "Remove all items from the conversion queue.")
+        
+        self.delete_selected_btn = ttk.Button(queue_control_frame, text="Delete Selected", command=self.delete_selected_queue_item, width=12)
+        self.delete_selected_btn.pack(side="top")
+        ToolTip(self.delete_selected_btn, "Remove the selected item from the conversion queue.")
+        
+        # Pack the treeview, scrollbar, and buttons in the correct order
+        self.queue_tree.pack(side="left", fill="both", expand=True)
+        queue_scrollbar.pack(side="left", fill="y")
         
     def create_voice_settings_section(self, parent):
         """Create the voice settings section with voice selection dropdown"""
@@ -506,80 +555,8 @@ class TextToSpeechApp:
         
         self.voice_var = tk.StringVar(value="af_heart")
         
-        # Voice data with grades and language codes
-        self.voice_data = {
-            # American English
-            "af_heart": {"grade": "A", "language": "American English", "lang_code": "a"},
-            "af_alloy": {"grade": "C", "language": "American English", "lang_code": "a"},
-            "af_aoede": {"grade": "C+", "language": "American English", "lang_code": "a"},
-            "af_bella": {"grade": "A-", "language": "American English", "lang_code": "a"},
-            "af_jessica": {"grade": "D", "language": "American English", "lang_code": "a"},
-            "af_kore": {"grade": "C+", "language": "American English", "lang_code": "a"},
-            "af_nicole": {"grade": "B-", "language": "American English", "lang_code": "a"},
-            "af_nova": {"grade": "C", "language": "American English", "lang_code": "a"},
-            "af_river": {"grade": "D", "language": "American English", "lang_code": "a"},
-            "af_sarah": {"grade": "C+", "language": "American English", "lang_code": "a"},
-            "af_sky": {"grade": "C-", "language": "American English", "lang_code": "a"},
-            "am_adam": {"grade": "F+", "language": "American English", "lang_code": "a"},
-            "am_echo": {"grade": "D", "language": "American English", "lang_code": "a"},
-            "am_eric": {"grade": "D", "language": "American English", "lang_code": "a"},
-            "am_fenrir": {"grade": "C+", "language": "American English", "lang_code": "a"},
-            "am_liam": {"grade": "D", "language": "American English", "lang_code": "a"},
-            "am_michael": {"grade": "C+", "language": "American English", "lang_code": "a"},
-            "am_onyx": {"grade": "D", "language": "American English", "lang_code": "a"},
-            "am_puck": {"grade": "C+", "language": "American English", "lang_code": "a"},
-            "am_santa": {"grade": "D-", "language": "American English", "lang_code": "a"},
-            
-            # British English
-            "bf_alice": {"grade": "D", "language": "British English", "lang_code": "b"},
-            "bf_emma": {"grade": "B-", "language": "British English", "lang_code": "b"},
-            "bf_isabella": {"grade": "C", "language": "British English", "lang_code": "b"},
-            "bf_lily": {"grade": "D", "language": "British English", "lang_code": "b"},
-            "bm_daniel": {"grade": "D", "language": "British English", "lang_code": "b"},
-            "bm_fable": {"grade": "C", "language": "British English", "lang_code": "b"},
-            "bm_george": {"grade": "C", "language": "British English", "lang_code": "b"},
-            "bm_lewis": {"grade": "D+", "language": "British English", "lang_code": "b"},
-            
-            # Japanese
-            "jf_alpha": {"grade": "C+", "language": "Japanese", "lang_code": "j"},
-            "jf_gongitsune": {"grade": "C", "language": "Japanese", "lang_code": "j"},
-            "jf_nezumi": {"grade": "C-", "language": "Japanese", "lang_code": "j"},
-            "jf_tebukuro": {"grade": "C", "language": "Japanese", "lang_code": "j"},
-            "jm_kumo": {"grade": "C-", "language": "Japanese", "lang_code": "j"},
-            
-            # Mandarin Chinese
-            "zf_xiaobei": {"grade": "D", "language": "Mandarin Chinese", "lang_code": "z"},
-            "zf_xiaoni": {"grade": "D", "language": "Mandarin Chinese", "lang_code": "z"},
-            "zf_xiaoxiao": {"grade": "D", "language": "Mandarin Chinese", "lang_code": "z"},
-            "zf_xiaoyi": {"grade": "D", "language": "Mandarin Chinese", "lang_code": "z"},
-            "zm_yunjian": {"grade": "D", "language": "Mandarin Chinese", "lang_code": "z"},
-            "zm_yunxi": {"grade": "D", "language": "Mandarin Chinese", "lang_code": "z"},
-            "zm_yunxia": {"grade": "D", "language": "Mandarin Chinese", "lang_code": "z"},
-            "zm_yunyang": {"grade": "D", "language": "Mandarin Chinese", "lang_code": "z"},
-            
-            # Spanish
-            "ef_dora": {"grade": "N/A", "language": "Spanish", "lang_code": "e"},
-            "em_alex": {"grade": "N/A", "language": "Spanish", "lang_code": "e"},
-            "em_santa": {"grade": "N/A", "language": "Spanish", "lang_code": "e"},
-            
-            # French
-            "ff_siwis": {"grade": "B-", "language": "French", "lang_code": "f"},
-            
-            # Hindi
-            "hf_alpha": {"grade": "C", "language": "Hindi", "lang_code": "h"},
-            "hf_beta": {"grade": "C", "language": "Hindi", "lang_code": "h"},
-            "hm_omega": {"grade": "C", "language": "Hindi", "lang_code": "h"},
-            "hm_psi": {"grade": "C", "language": "Hindi", "lang_code": "h"},
-            
-            # Italian
-            "if_sara": {"grade": "C", "language": "Italian", "lang_code": "i"},
-            "im_nicola": {"grade": "C", "language": "Italian", "lang_code": "i"},
-            
-            # Brazilian Portuguese
-            "pf_dora": {"grade": "N/A", "language": "Brazilian Portuguese", "lang_code": "p"},
-            "pm_alex": {"grade": "N/A", "language": "Brazilian Portuguese", "lang_code": "p"},
-            "pm_santa": {"grade": "N/A", "language": "Brazilian Portuguese", "lang_code": "p"}
-        }
+        # Use imported voice data
+        self.voice_data = VOICE_DATA
         
         # Create voice list with grades for display
         voices_with_grades = [
@@ -696,7 +673,7 @@ class TextToSpeechApp:
         margin_frame = ttk.Frame(settings_frame)
         margin_frame.pack(fill="x", pady=(5, 0))
         
-        self.margin_var = tk.IntVar(value=25)  # Default margin value in ms
+        self.margin_var = tk.IntVar(value=30)  # Default margin value in ms
         self.margin_spinbox = ttk.Spinbox(margin_frame, from_=0, to=500, textvariable=self.margin_var, width=10)
         self.margin_spinbox.pack(side="left")
         ToolTip(self.margin_spinbox, "Base time in milliseconds to keep before and after detected sound. Converted to samples based on current sample rate and applied during silence trimming of each audio chunk. Multiplied by 2 before the end of a silence, and by 10 after, because human voices trail off more than they trail in.")
@@ -828,12 +805,14 @@ class TextToSpeechApp:
         file_path = filedialog.askopenfilename(
             title="Select Input File",
             filetypes=[
-                ("All supported files", "*.txt *.epub *.html *.htm *.pdf *.docx"),
+                ("All supported files", "*.txt *.epub *.html *.htm *.pdf *.docx *.rtf *.md"),
                 ("Text files", "*.txt"),
                 ("EPUB files", "*.epub"),
                 ("HTML files", "*.html *.htm"),
                 ("PDF files", "*.pdf"),
                 ("Word documents", "*.docx"),
+                ("Markdown files", "*.md"),
+                ("Richtext files", "*.rtf"),
                 ("All files", "*.*")
             ]
         )
@@ -875,6 +854,10 @@ class TextToSpeechApp:
                 format_arg = 'pdf'
             elif ext == '.docx':
                 format_arg = 'docx'
+            elif ext == '.rtf':
+                format_arg = 'rtf'
+            elif ext == '.md':
+                format_arg = 'gfm'
             else:
                 # For plain text files, no conversion needed
                 with open(file_path, 'r', encoding='utf-8') as file:
@@ -921,6 +904,9 @@ class TextToSpeechApp:
             self.editor_text.edit_modified(False)
             # Store original content for newline replacement feature
             self.original_text_content = content
+            # Clear cached math conversion
+            self.converted_text_content = ""
+            self.convert_math_checkbox.config(text="Convert math formulas and tables to verbal descriptions using AI")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load file content:\n{str(e)}")
             
@@ -968,18 +954,14 @@ class TextToSpeechApp:
             # Store original content before replacement
             self.original_text_content = self.editor_text.get(1.0, tk.END + "-1c")
             
-            # Replace single newlines with spaces, preserving double newlines
-            current_content = self.original_text_content
-            # First, temporarily replace double newlines with a placeholder
-            temp_content = current_content.replace('\n\n', 'DOUBLE_NEWLINE_PLACEHOLDER')
-            # Replace single newlines with spaces
-            temp_content = temp_content.replace('\n', ' ')
-            # Restore double newlines
-            modified_content = temp_content.replace('DOUBLE_NEWLINE_PLACEHOLDER', '\n\n')
-            
-            # Update the text editor with modified content
+            # Apply text transformations (without math conversion)
+            content = apply_text_transformations(
+                self.original_text_content,
+                self.replace_newlines_var,
+                self.merge_paragraphs_var.get() if hasattr(self, 'merge_paragraphs_var') else None
+            )
             self.editor_text.delete(1.0, tk.END)
-            self.editor_text.insert(1.0, modified_content)
+            self.editor_text.insert(1.0, content)
         else:
             # Restore original content
             self.editor_text.delete(1.0, tk.END)
@@ -989,6 +971,37 @@ class TextToSpeechApp:
         self.text_editor_modified = True
         self.editor_text.edit_modified(True)
         self.update_editor_status()
+        # Clear cached math conversion
+        self.converted_text_content = ""
+        self.convert_math_checkbox.config(text="Convert math formulas and tables to verbal descriptions using AI")
+
+    def toggle_merge_paragraphs(self):
+        """Toggle merging of accidentally split paragraphs"""
+        if self.merge_paragraphs_var.get():
+            # Store original content before replacement
+            if not self.replace_newlines_var.get():  # Only store if not already stored
+                self.original_text_content = self.editor_text.get(1.0, tk.END + "-1c")
+            
+            # Apply text transformations (without math conversion)
+            content = apply_text_transformations(
+                self.original_text_content,
+                self.replace_newlines_var.get() if hasattr(self, 'replace_newlines_var') else None,
+                self.merge_paragraphs_var
+            )
+            self.editor_text.delete(1.0, tk.END)
+            self.editor_text.insert(1.0, content)
+        else:
+            # Restore original content
+            self.editor_text.delete(1.0, tk.END)
+            self.editor_text.insert(1.0, self.original_text_content)
+            
+        # Mark as modified
+        self.text_editor_modified = True
+        self.editor_text.edit_modified(True)
+        self.update_editor_status()
+        # Clear cached math conversion
+        self.converted_text_content = ""
+        self.convert_math_checkbox.config(text="Convert math formulas and tables to verbal descriptions using AI")
 
     def on_text_editor_change(self, event=None):
         """Handle changes in the text editor"""
@@ -996,6 +1009,10 @@ class TextToSpeechApp:
         if hasattr(self, '_update_editor_status_job'):
             self.root.after_cancel(self._update_editor_status_job)
         self._update_editor_status_job = self.root.after(100, self.update_editor_status)
+        
+        # Clear cached math conversion when text is manually modified
+        self.converted_text_content = ""
+        self.convert_math_checkbox.config(text="Convert math formulas and tables to verbal descriptions using AI")
         
     def update_editor_status(self):
         """Update the editor status label"""
@@ -1010,6 +1027,145 @@ class TextToSpeechApp:
                 else:
                     self.editor_status_var.set("No file loaded")
 
+    def find_text(self):
+        """Find the next occurrence of the search text"""
+        search_term = self.search_var.get()
+        if not search_term:
+            return
+            
+        # Get current cursor position
+        current_pos = self.editor_text.index(tk.INSERT)
+        
+        # Search from current position to end of text
+        start_pos = self.editor_text.search(search_term, current_pos, tk.END)
+        
+        if not start_pos:
+            # If not found, wrap around to beginning
+            start_pos = self.editor_text.search(search_term, "1.0", tk.END)
+            
+        if start_pos:
+            # Calculate end position
+            end_pos = f"{start_pos}+{len(search_term)}c"
+            
+            # Highlight the found text
+            self.editor_text.tag_remove("sel", "1.0", tk.END)
+            self.editor_text.tag_add("sel", start_pos, end_pos)
+            self.editor_text.mark_set(tk.INSERT, end_pos)
+            self.editor_text.see(start_pos)
+            self.editor_text.focus()
+        else:
+            # Text not found
+            messagebox.showinfo("Search", f"'{search_term}' not found")
+
+    def find_previous_text(self):
+        """Find the previous occurrence of the search text"""
+        search_term = self.search_var.get()
+        if not search_term:
+            return
+            
+        # Get current cursor position
+        current_pos = self.editor_text.index(tk.INSERT)
+        
+        # Search from beginning to current position
+        start_pos = self.editor_text.search(search_term, "1.0", current_pos, backwards=True)
+        
+        if not start_pos:
+            # If not found, wrap around to end
+            start_pos = self.editor_text.search(search_term, tk.END, "1.0", backwards=True)
+            
+        if start_pos:
+            # Calculate end position
+            end_pos = f"{start_pos}+{len(search_term)}c"
+            
+            # Highlight the found text
+            self.editor_text.tag_remove("sel", "1.0", tk.END)
+            self.editor_text.tag_add("sel", start_pos, end_pos)
+            self.editor_text.mark_set(tk.INSERT, start_pos)
+            self.editor_text.see(start_pos)
+            self.editor_text.focus()
+        else:
+            # Text not found
+            messagebox.showinfo("Search", f"'{search_term}' not found")
+
+    def toggle_math_conversion(self):
+        """Toggle math and table conversion on/off"""
+        if self.convert_math_var.get():
+            # If we have cached converted text, use it, because if the original text has been modified, the cache gets cleared elsewhere.
+            if self.converted_text_content:
+                self.editor_text.delete(1.0, tk.END)
+                self.editor_text.insert(1.0, self.converted_text_content)
+                # Mark as modified
+                self.text_editor_modified = True
+                self.editor_text.edit_modified(True)
+                self.update_editor_status()
+                return
+            
+            # Get current text content
+            text_content = self.editor_text.get(1.0, tk.END + "-1c")
+            
+            # Check if there's text to process
+            if not text_content.strip():
+                return
+                
+            # Show processing status
+            self.status_var.set("Converting math formulas and tables to verbal descriptions...")
+            self.root.update()
+            
+            # Run conversion in a separate thread
+            import threading
+            threading.Thread(target=self._convert_math_in_thread, daemon=True).start()
+        else:
+            if self.original_text_content:
+                self.editor_text.delete(1.0, tk.END)
+                self.editor_text.insert(1.0, self.original_text_content)
+                # Mark as modified
+                self.text_editor_modified = True
+                self.editor_text.edit_modified(True)
+                self.update_editor_status()
+
+    def _convert_math_in_thread(self):
+        """Perform math conversion in a separate thread"""
+        try:
+            # Get current text content
+            text_content = self.editor_text.get(1.0, tk.END + "-1c")
+            
+            if not text_content.strip():
+                self.root.after(0, lambda: self.status_var.set("Ready to convert"))
+                return
+                
+            # Import the conversion function
+            from text_processor import convert_math_and_tables
+            
+            # Process the text
+            processed_content = convert_math_and_tables(text_content)
+            
+            # Cache the converted text
+            self.converted_text_content = processed_content
+            # Update checkbox text to indicate cached conversion
+            self.convert_math_checkbox.config(text="Convert math formulas and tables to verbal descriptions using AI (cached)")
+            
+            # Update the editor with processed content in the main thread
+            self.root.after(0, self._update_editor_after_conversion, processed_content)
+        except Exception as e:
+            self.root.after(0, lambda: self.status_var.set("Math/table conversion failed"))
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to convert math formulas and tables:\n{str(e)}"))
+
+    def _update_editor_after_conversion(self, processed_content):
+        """Update the editor with converted content in the main thread"""
+        # Update the editor with processed content only if the checkbox is still checked
+        if self.convert_math_var.get():
+            self.editor_text.delete(1.0, tk.END)
+            self.editor_text.insert(1.0, processed_content)
+            
+            # Mark as modified
+            self.text_editor_modified = True
+            self.editor_text.edit_modified(True)
+            self.update_editor_status()
+            # Update checkbox text to indicate cached conversion
+            self.convert_math_checkbox.config(text="Convert math formulas and tables to verbal descriptions (cached)")
+        
+        self.status_var.set("Math/table conversion completed!")
+        
     def browse_output_file(self):
         """Open file dialog to select output audio file"""
         print("Opening file dialog for output file...")
@@ -1063,7 +1219,7 @@ class TextToSpeechApp:
                 if hasattr(self, 'threshold_var') and self.threshold_var:
                     self.threshold_var.set(last_settings.get("threshold", 0.06))
                 if hasattr(self, 'margin_var') and self.margin_var:
-                    self.margin_var.set(last_settings.get("margin", 25))
+                    self.margin_var.set(last_settings.get("margin", 30))
                 if hasattr(self, 'batch_count_var') and self.batch_count_var:
                     self.batch_count_var.set(last_settings.get("batch_count", 1))
                 if hasattr(self, 'language_var') and self.language_var:
@@ -1423,32 +1579,33 @@ class TextToSpeechApp:
                 self.convert_worker_thread.start()
         else:
             # Process single file (original behavior)
-            input_path = self.input_path_var.get()
             output_path = self.output_path_var.get()
-            print("Output path: " + output_path)
-            
-            if not input_path:
-                messagebox.showwarning("Warning", "Please select an input text file.")
-                return
-                
-            if not output_path:
-                messagebox.showwarning("Warning", "Please specify an output audio file path.")
-                return
-                
-            if not os.path.exists(input_path):
-                messagebox.showerror("Error", "Input file does not exist.")
-                return
             
             # Use the edited text content
             text_content = self.editor_text.get(1.0, tk.END)
-                
-            # Start conversion in background thread
+            
+            # Apply text transformations (without math conversion)
+            text_content = apply_text_transformations(
+                text_content,
+                self.replace_newlines_var.get() if hasattr(self, 'replace_newlines_var') and self.replace_newlines_var.get() else None,
+                self.merge_paragraphs_var.get() if hasattr(self, 'merge_paragraphs_var') and self.merge_paragraphs_var.get() else None
+            )
+
+            if len(text_content) == 0:
+                messagebox.showwarning("Warning", "Please select an input text file or put something in the text box yourself.")
+                return
+
+            if not output_path:
+                messagebox.showwarning("Warning", "Please specify an output audio file path.")
+                return
+
             self.app_state.set_state(AppState.PROCESSING)
             
             if self.convert_worker is not None:
+                # Start conversion in background thread
                 self.convert_worker_thread = threading.Thread(
                     target=self.convert_worker.convert_file, 
-                    args=(input_path, output_path, text_content), 
+                    args=(text_content, output_path), 
                     daemon=True
                 )
                 self.convert_worker_thread.start()
